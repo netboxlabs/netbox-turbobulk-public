@@ -44,8 +44,8 @@ class TurboBulkClient:
             token: API token (or set NETBOX_TOKEN env var)
             verify_ssl: Verify SSL certificates (default True)
         """
-        self.base_url = (base_url or os.environ.get('NETBOX_URL', '')).rstrip('/')
-        self.token = token or os.environ.get('NETBOX_TOKEN', '')
+        self.base_url = (base_url or os.environ.get("NETBOX_URL", "")).rstrip("/")
+        self.token = token or os.environ.get("NETBOX_TOKEN", "")
 
         if not self.base_url:
             raise TurboBulkError("NetBox URL required (pass base_url or set NETBOX_URL)")
@@ -55,14 +55,14 @@ class TurboBulkClient:
         self.verify_ssl = verify_ssl
         self.session = requests.Session()
         # Detect token version: v2 tokens start with 'nbt_'
-        if self.token.startswith('nbt_'):
-            self.session.headers['Authorization'] = f'Bearer {self.token}'
+        if self.token.startswith("nbt_"):
+            self.session.headers["Authorization"] = f"Bearer {self.token}"
         else:
-            self.session.headers['Authorization'] = f'Token {self.token}'
+            self.session.headers["Authorization"] = f"Token {self.token}"
         self.session.verify = verify_ssl
 
         # TurboBulk API base
-        self.api_base = f'{self.base_url}/api/plugins/turbobulk'
+        self.api_base = f"{self.base_url}/api/plugins/turbobulk"
 
     def get_models(self) -> List[Dict]:
         """
@@ -71,7 +71,7 @@ class TurboBulkClient:
         Returns:
             List of model info dicts with app_label, model_name, etc.
         """
-        response = self.session.get(f'{self.api_base}/models/')
+        response = self.session.get(f"{self.api_base}/models/")
         response.raise_for_status()
         return response.json()
 
@@ -85,7 +85,7 @@ class TurboBulkClient:
         Returns:
             Schema dict with fields, constraints, etc.
         """
-        response = self.session.get(f'{self.api_base}/models/{model}/')
+        response = self.session.get(f"{self.api_base}/models/{model}/")
         response.raise_for_status()
         return response.json()
 
@@ -110,12 +110,12 @@ class TurboBulkClient:
         schema = self.get_model_schema(model)
         template = {}
 
-        for field in schema.get('fields', []):
-            name = field['name']
-            is_pk = field.get('primary_key', False)
-            nullable = field.get('nullable', True)
-            has_default = field.get('default') is not None
-            is_fk = field.get('foreign_key') is not None
+        for field in schema.get("fields", []):
+            name = field["name"]
+            is_pk = field.get("primary_key", False)
+            nullable = field.get("nullable", True)
+            has_default = field.get("default") is not None
+            is_fk = field.get("foreign_key") is not None
 
             # Skip primary key (auto-generated)
             if is_pk:
@@ -123,27 +123,27 @@ class TurboBulkClient:
 
             # For FK fields, use the _id suffix
             if is_fk:
-                name = f"{name}_id" if not name.endswith('_id') else name
+                name = f"{name}_id" if not name.endswith("_id") else name
 
             # Skip optional fields if not requested
             if nullable and has_default and not include_optional:
                 continue
 
             # Generate appropriate default value based on type
-            field_type = field.get('type', '')
-            default = field.get('default')
+            field_type = field.get("type", "")
+            default = field.get("default")
 
             if default is not None:
                 template[name] = default
-            elif 'Char' in field_type or 'Text' in field_type:
-                template[name] = ''
-            elif 'Int' in field_type or 'BigInt' in field_type:
+            elif "Char" in field_type or "Text" in field_type:
+                template[name] = ""
+            elif "Int" in field_type or "BigInt" in field_type:
                 template[name] = 0
-            elif 'Bool' in field_type:
+            elif "Bool" in field_type:
                 template[name] = False
-            elif 'JSON' in field_type:
+            elif "JSON" in field_type:
                 template[name] = {}
-            elif 'Decimal' in field_type or 'Float' in field_type:
+            elif "Decimal" in field_type or "Float" in field_type:
                 template[name] = 0.0
             else:
                 template[name] = None
@@ -154,9 +154,9 @@ class TurboBulkClient:
         self,
         model: str,
         data_path: Union[str, Path],
-        mode: str = 'insert',
+        mode: str = "insert",
         conflict_fields: Optional[List[str]] = None,
-        validation_mode: str = 'auto',
+        validation_mode: str = "auto",
         wait: bool = True,
         poll_interval: float = 1.0,
         timeout: int = 3600,
@@ -198,10 +198,10 @@ class TurboBulkClient:
         self,
         model: str,
         data_path: Union[str, Path],
-        mode: str = 'insert',
+        mode: str = "insert",
         conflict_fields: Optional[List[str]] = None,
         conflict_constraint: Optional[str] = None,
-        validation_mode: str = 'auto',
+        validation_mode: str = "auto",
         post_hooks: Optional[Dict[str, bool]] = None,
         create_changelogs: bool = True,
         dispatch_events: Optional[bool] = None,
@@ -247,30 +247,31 @@ class TurboBulkClient:
 
         # Build form data
         data = {
-            'model': model,
-            'mode': mode,
-            'validation_mode': validation_mode,
-            'create_changelogs': str(create_changelogs).lower(),
+            "model": model,
+            "mode": mode,
+            "validation_mode": validation_mode,
+            "create_changelogs": str(create_changelogs).lower(),
         }
         if conflict_fields:
-            data['conflict_fields'] = ','.join(conflict_fields)
+            data["conflict_fields"] = ",".join(conflict_fields)
         if conflict_constraint:
-            data['conflict_constraint'] = conflict_constraint
+            data["conflict_constraint"] = conflict_constraint
         if post_hooks:
             import json
-            data['post_hooks'] = json.dumps(post_hooks)
+
+            data["post_hooks"] = json.dumps(post_hooks)
         if dispatch_events is not None:
-            data['dispatch_events'] = str(dispatch_events).lower()
+            data["dispatch_events"] = str(dispatch_events).lower()
         if branch:
-            data['branch'] = branch
+            data["branch"] = branch
         if dry_run:
-            data['dry_run'] = 'true'
+            data["dry_run"] = "true"
 
         # Upload file
-        with open(data_path, 'rb') as f:
-            files = {'file': (data_path.name, f, 'application/octet-stream')}
+        with open(data_path, "rb") as f:
+            files = {"file": (data_path.name, f, "application/octet-stream")}
             response = self.session.post(
-                f'{self.api_base}/load/',
+                f"{self.api_base}/load/",
                 data=data,
                 files=files,
             )
@@ -282,7 +283,7 @@ class TurboBulkClient:
             return result
 
         # Poll for completion
-        job_id = result.get('job_id')
+        job_id = result.get("job_id")
         if not job_id:
             return result
 
@@ -337,23 +338,23 @@ class TurboBulkClient:
             raise TurboBulkError(f"Data file not found: {data_path}")
 
         data = {
-            'model': model,
-            'cascade_nullable_fks': str(cascade_nullable_fks).lower(),
-            'create_changelogs': str(create_changelogs).lower(),
+            "model": model,
+            "cascade_nullable_fks": str(cascade_nullable_fks).lower(),
+            "create_changelogs": str(create_changelogs).lower(),
         }
         if key_fields:
-            data['key_fields'] = ','.join(key_fields)
+            data["key_fields"] = ",".join(key_fields)
         if dispatch_events is not None:
-            data['dispatch_events'] = str(dispatch_events).lower()
+            data["dispatch_events"] = str(dispatch_events).lower()
         if branch:
-            data['branch'] = branch
+            data["branch"] = branch
         if dry_run:
-            data['dry_run'] = 'true'
+            data["dry_run"] = "true"
 
-        with open(data_path, 'rb') as f:
-            files = {'file': (data_path.name, f, 'application/octet-stream')}
+        with open(data_path, "rb") as f:
+            files = {"file": (data_path.name, f, "application/octet-stream")}
             response = self.session.post(
-                f'{self.api_base}/delete/',
+                f"{self.api_base}/delete/",
                 data=data,
                 files=files,
             )
@@ -364,7 +365,7 @@ class TurboBulkClient:
         if not wait:
             return result
 
-        job_id = result.get('job_id')
+        job_id = result.get("job_id")
         if not job_id:
             return result
 
@@ -384,7 +385,7 @@ class TurboBulkClient:
         fields: Optional[List[str]] = None,
         include_custom_fields: bool = True,
         include_tags: bool = True,
-        format: str = 'jsonl',
+        format: str = "jsonl",
         output_path: Optional[Path] = None,
         force_refresh: bool = False,
         check_cache_only: bool = False,
@@ -426,56 +427,56 @@ class TurboBulkClient:
         import tempfile
 
         data = {
-            'model': model,
-            'format': format,
-            'include_custom_fields': include_custom_fields,
-            'include_tags': include_tags,
+            "model": model,
+            "format": format,
+            "include_custom_fields": include_custom_fields,
+            "include_tags": include_tags,
         }
         if filters:
-            data['filters'] = filters
+            data["filters"] = filters
         if fields:
-            data['fields'] = fields
+            data["fields"] = fields
         if force_refresh:
-            data['force_refresh'] = True
+            data["force_refresh"] = True
         if check_cache_only:
-            data['check_cache_only'] = True
+            data["check_cache_only"] = True
         if client_cache_key:
-            data['client_cache_key'] = client_cache_key
+            data["client_cache_key"] = client_cache_key
 
         response = self.session.post(
-            f'{self.api_base}/export/',
+            f"{self.api_base}/export/",
             json=data,
         )
 
         # Handle 304 Not Modified
         if response.status_code == 304:
             result = response.json() if response.content else {}
-            result['status_code'] = 304
-            result['cached'] = True
+            result["status_code"] = 304
+            result["cached"] = True
             if verbose:
                 print(f"Cache current: client file is up to date")
             return result
 
         response.raise_for_status()
         result = response.json()
-        result['status_code'] = response.status_code
+        result["status_code"] = response.status_code
 
         # Handle check_cache_only response
         if check_cache_only:
             if verbose:
-                if result.get('cached'):
+                if result.get("cached"):
                     print(f"Cache valid: {model}")
                 else:
                     print(f"Cache invalid or missing: {model}")
             return result
 
         # Handle cache hit (HTTP 200)
-        if response.status_code == 200 and result.get('cached'):
+        if response.status_code == 200 and result.get("cached"):
             if verbose:
                 print(f"Cache hit: {result.get('row_count', 'N/A')} rows")
 
             # Download the cached file
-            download_url = result.get('download_url')
+            download_url = result.get("download_url")
             if download_url:
                 output_path = self._download_export_file(
                     download_url,
@@ -483,7 +484,7 @@ class TurboBulkClient:
                     format,
                     verbose,
                 )
-                result['path'] = output_path
+                result["path"] = output_path
 
             return result
 
@@ -491,7 +492,7 @@ class TurboBulkClient:
         if not wait:
             return result
 
-        job_id = result.get('job_id')
+        job_id = result.get("job_id")
         if not job_id:
             raise TurboBulkError("No job_id in export response")
 
@@ -509,24 +510,23 @@ class TurboBulkClient:
 
         # Download the exported file
         # Prefer download_url at top level (new API), then file_url in data (legacy)
-        download_url = job_result.get('download_url')
+        download_url = job_result.get("download_url")
         if not download_url:
-            download_url = job_result.get('data', {}).get('file_url')
+            download_url = job_result.get("data", {}).get("file_url")
 
         # Fall back to constructing API download endpoint URL
         if not download_url:
             download_url = f"{self.api_base}/jobs/{job_id}/download/"
 
-        file_path = job_result.get('data', {}).get('file_path')
+        file_path = job_result.get("data", {}).get("file_path")
         if verbose:
             print(f"Export file at: {file_path or download_url}")
         output_path = self._download_export_file(download_url, output_path, format, verbose)
-        job_result['path'] = output_path
+        job_result["path"] = output_path
 
         # Add cache info to result
-        job_result['cached'] = False
+        job_result["cached"] = False
         return job_result
-
 
     def check_export_cache(
         self,
@@ -535,7 +535,7 @@ class TurboBulkClient:
         fields: Optional[List[str]] = None,
         include_custom_fields: bool = True,
         include_tags: bool = True,
-        format: str = 'jsonl',
+        format: str = "jsonl",
         client_cache_key: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
@@ -581,8 +581,8 @@ class TurboBulkClient:
         """Download an export file from URL."""
         import tempfile
 
-        if url.startswith('/'):
-            url = f'{self.base_url}{url}'
+        if url.startswith("/"):
+            url = f"{self.base_url}{url}"
 
         if verbose:
             print(f"Downloading export file...")
@@ -591,14 +591,14 @@ class TurboBulkClient:
         download_response.raise_for_status()
 
         if output_path is None:
-            suffix = '.jsonl.gz' if format == 'jsonl' else '.parquet'
+            suffix = ".jsonl.gz" if format == "jsonl" else ".parquet"
             fd, output_path = tempfile.mkstemp(suffix=suffix)
             os.close(fd)
             output_path = Path(output_path)
         else:
             output_path = Path(output_path)
 
-        with open(output_path, 'wb') as f:
+        with open(output_path, "wb") as f:
             f.write(download_response.content)
 
         if verbose:
@@ -616,7 +616,7 @@ class TurboBulkClient:
         Returns:
             Job status dict
         """
-        response = self.session.get(f'{self.api_base}/jobs/{job_id}/')
+        response = self.session.get(f"{self.api_base}/jobs/{job_id}/")
         response.raise_for_status()
         return response.json()
 
@@ -638,21 +638,21 @@ class TurboBulkClient:
                 raise TurboBulkError(f"Job {job_id} timed out after {timeout}s")
 
             result = self.get_job_status(job_id)
-            status = result.get('status')
+            status = result.get("status")
 
             if verbose and status != last_status:
                 print(f"[{elapsed:.1f}s] {operation}: {status}")
                 last_status = status
 
-            if status == 'completed':
+            if status == "completed":
                 if verbose:
-                    rows = result.get('data', {}).get('rows_affected', 'N/A')
-                    duration = result.get('duration_seconds', 'N/A')
+                    rows = result.get("data", {}).get("rows_affected", "N/A")
+                    duration = result.get("duration_seconds", "N/A")
                     print(f"Completed: {rows} rows in {duration}s")
                 return result
 
-            if status == 'errored' or status == 'failed':
-                error_msg = result.get('data', {}).get('error', 'Unknown error')
+            if status == "errored" or status == "failed":
+                error_msg = result.get("data", {}).get("error", "Unknown error")
                 raise JobFailedError(f"Job failed: {error_msg}", result)
 
             time.sleep(poll_interval)
@@ -670,9 +670,9 @@ class TurboBulkClient:
         Returns:
             Response JSON
         """
-        if not endpoint.startswith('/'):
-            endpoint = f'/{endpoint}'
-        response = self.session.get(f'{self.base_url}{endpoint}', params=params)
+        if not endpoint.startswith("/"):
+            endpoint = f"/{endpoint}"
+        response = self.session.get(f"{self.base_url}{endpoint}", params=params)
         response.raise_for_status()
         return response.json()
 
@@ -688,21 +688,22 @@ class TurboBulkClient:
             List of all result objects
         """
         params = params or {}
-        params['limit'] = 1000
+        params["limit"] = 1000
         results = []
 
         while True:
             data = self.rest_get(endpoint, params)
-            results.extend(data.get('results', []))
+            results.extend(data.get("results", []))
 
-            next_url = data.get('next')
+            next_url = data.get("next")
             if not next_url:
                 break
 
             from urllib.parse import urlparse, parse_qs
+
             parsed = urlparse(next_url)
             next_params = parse_qs(parsed.query)
-            params['offset'] = next_params.get('offset', [0])[0]
+            params["offset"] = next_params.get("offset", [0])[0]
 
         return results
 
@@ -720,10 +721,9 @@ class TurboBulkClient:
             ContentType ID
         """
         data = self.rest_get(
-            '/api/core/object-types/',
-            params={'app_label': app_label, 'model': model}
+            "/api/core/object-types/", params={"app_label": app_label, "model": model}
         )
-        results = data.get('results', [])
+        results = data.get("results", [])
         if not results:
             raise TurboBulkError(f"ContentType not found: {app_label}.{model}")
-        return results[0]['id']
+        return results[0]["id"]

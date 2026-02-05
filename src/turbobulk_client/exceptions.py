@@ -7,6 +7,7 @@ from typing import Dict, Any
 
 class TurboBulkError(Exception):
     """Base exception for TurboBulk client errors."""
+
     pass
 
 
@@ -28,9 +29,11 @@ class ValidationError(TurboBulkError):
 
 class ConnectionError(TurboBulkError):
     """Raised when connection to NetBox fails."""
+
     pass
 
 
 class AuthenticationError(TurboBulkError):
     """Raised when authentication fails."""
+
     pass
