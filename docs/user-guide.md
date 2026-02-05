@@ -1,0 +1,504 @@
+# TurboBulk User Guide
+
+## Overview
+
+TurboBulk is a high-performance bulk data API for NetBox that achieves massive throughput improvements over the REST API for large-scale data operations.
+
+## Data Formats
+
+TurboBulk supports two data formats for bulk operations:
+
+### JSON Lines (JSONL) - Default
+
+JSON Lines (JSONL/NDJSON) is the **recommended default format** for most users:
+
+- **Row-oriented**: Each line is a complete JSON object
+- **Easy to create**: Just `JSON.stringify()` each row
+- **Works everywhere**: Any language with JSON support
+- **Compressed**: Automatically gzipped for efficient uploads (`.jsonl.gz`)
+
+**Example JSONL file:**
+```json
+{"name": "site-1", "slug": "site-1", "status": "active"}
+{"name": "site-2", "slug": "site-2", "status": "active"}
+{"name": "site-3", "slug": "site-3", "status": "planned"}
+```
+
+**Creating JSONL in Python:**
+```python
+import gzip
+import json
+
+sites = [
+    {'name': 'site-1', 'slug': 'site-1', 'status': 'active'},
+    {'name': 'site-2', 'slug': 'site-2', 'status': 'active'},
+]
+
+with gzip.open('sites.jsonl.gz', 'wt', encoding='utf-8') as f:
+    for site in sites:
+        f.write(json.dumps(site) + '\n')
+```
+
+**Creating JSONL in JavaScript/Node:**
+```javascript
+const zlib = require('zlib');
+const fs = require('fs');
+
+const gzip = zlib.createGzip();
+const output = fs.createWriteStream('sites.jsonl.gz');
+gzip.pipe(output);
+
+for (const site of sites) {
+    gzip.write(JSON.stringify(site) + '\n');
+}
+gzip.end();
+```
+
+### Parquet - High Performance
+
+Apache Parquet is available for maximum performance with large datasets:
+
+- **Columnar**: Excellent compression, fast for large datasets
+- **Typed**: Strong schema enforcement
+- **Recommended for**: 100K+ rows, repeated operations, maximum throughput
+
+**Creating Parquet in Python:**
+```python
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+data = {
+    'name': ['site-1', 'site-2', 'site-3'],
+    'slug': ['site-1', 'site-2', 'site-3'],
+    'status': ['active', 'active', 'planned'],
+}
+
+table = pa.table(data)
+pq.write_table(table, 'sites.parquet')
+```
+
+### Choosing a Format
+
+**Use JSONL when:**
+- You want the simplest integration
+- Your data source is in any programming language
+- You're loading moderate datasets (<100K rows)
+- You want human-readable files for debugging
+
+**Use Parquet when:**
+- You're loading very large datasets (100K+ rows) frequently
+- Maximum throughput is critical
+- You already have PyArrow or similar library available
+- You're doing repeated bulk operations
+
+### Format Auto-Detection
+
+TurboBulk automatically detects the file format from:
+1. File extension (`.jsonl`, `.jsonl.gz`, `.ndjson`, `.parquet`)
+2. Content inspection
+
+## When to Use Bulk API vs REST API
+
+**When to use TurboBulk:**
+- Initial data population (>1K objects)
+- Regular full syncs from external systems
+- Data migration between NetBox instances
+- Analytics/reporting exports
+
+**When to use the REST API:**
+- Interactive changes
+- Operations on <1000 objects
+- Operations requiring custom Django validators
+
+| Scenario | Recommendation | Reason |
+|----------|----------------|--------|
+| Initial population >1K objects | Bulk API | Massive throughput |
+| Ongoing sync from CMDB | Bulk API | Efficient for large batches |
+| Migration between instances | Bulk API | Handles millions of rows |
+| Changes requiring audit trail | Bulk API | ObjectChange records supported |
+| Changes requiring webhooks/events | Bulk API | Events dispatched asynchronously |
+| Interactive single-object changes | REST API | Full validation |
+| Operations on <1000 objects | REST API | Simpler, full features |
+
+## What Gets Bypassed
+
+The bulk API deliberately bypasses certain NetBox features for performance. Understanding these tradeoffs is critical for proper use.
+
+### Features NOT Applied During Bulk Operations
+
+| Feature | REST API Behavior | TurboBulk Behavior | Impact |
+|---------|-------------------|-------------------|--------|
+| **Webhooks/Events** | Triggered per object | **Async dispatch** (default) | Events dispatched after operation |
+| **Event rules** | Triggered per object | **Async dispatch** (default) | Rules triggered via event pipeline |
+| **Custom scripts** | Executed per object | Not triggered | Plugin hooks won't fire |
+| **Custom validators** | Validation executed | Database + optional Django validation | Some validation gaps for complex models |
+| **Object changelog** | Recorded per object | **Supported** (default) | Enable with `create_changelogs=true` |
+
+### What Still Works
+
+| Feature | Behavior |
+|---------|----------|
+| **Database constraints** | Foreign key, unique, and check constraints enforced |
+| **Custom fields** | Fully supported - include in your data |
+| **Tags** | Fully supported - include `_tags` column |
+| **Permissions** | User permissions checked before job execution |
+| **Transaction safety** | Full rollback on any error - no partial commits |
+| **Changelog records** | Generated by default (can be disabled for performance) |
+| **NetBox Branching** | Fully supported - operations can target a branch |
+
+## Validation Modes
+
+TurboBulk provides flexible validation to balance speed and thoroughness.
+
+### Available Modes
+
+Control validation behavior with the `validation_mode` parameter:
+
+| Mode | Performance | Coverage | Use When |
+|------|-------------|----------|----------|
+| `none` | Fastest | DB constraints only | Trusted data, migrations |
+| `auto` (default) | Fast | DB + IP/prefix validation | Normal bulk operations |
+| `full` | Slower | Complete Django validation | Critical data, complex models |
+
+### When to Use Full Validation
+
+For models with complex business rules, use `validation_mode='full'`:
+
+**Recommended for:**
+- `dcim.cable` - Cable profile compatibility
+- `dcim.device` - Rack position conflicts, primary IP assignment
+- `dcim.interface` - LAG membership, parent device consistency
+- `circuits.circuittermination` - Endpoint type validation
+
+**Example with validation_mode:**
+```bash
+# Full validation mode - catches all issues but slower
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  -F "model=dcim.cable" \
+  -F "mode=insert" \
+  -F "validation_mode=full" \
+  -F "file=@cables.jsonl.gz" \
+  "https://your-instance.cloud.netboxapp.com/api/plugins/turbobulk/load/"
+
+# No validation - for trusted migration data
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  -F "model=dcim.site" \
+  -F "mode=insert" \
+  -F "validation_mode=none" \
+  -F "file=@sites.jsonl.gz" \
+  "https://your-instance.cloud.netboxapp.com/api/plugins/turbobulk/load/"
+```
+
+### Best Practices
+
+1. **Validate first:** Test data before committing
+   ```python
+   result = client.validate('dcim.cable', 'cables.jsonl.gz')
+   if result['data']['valid']:
+       client.load('dcim.cable', 'cables.jsonl.gz')
+   ```
+
+2. **Use `validation_mode='full'`** for complex models (cables, devices with rack positions)
+
+3. **Use `validation_mode='none'`** only for trusted data from another NetBox instance
+
+4. **Use REST API** for operations under 1000 objects where full validation is needed
+
+## Foreign Key Requirements
+
+Foreign keys must be provided as integer primary keys:
+
+```python
+import gzip
+import json
+
+# CORRECT: FK as integer PK
+device = {
+    'name': 'device-1',
+    'site_id': 123,           # Site PK
+    'device_type_id': 456,    # DeviceType PK
+    'role_id': 789,           # Role PK
+    'status': 'active',
+}
+
+with gzip.open('devices.jsonl.gz', 'wt') as f:
+    f.write(json.dumps(device) + '\n')
+```
+
+**DO NOT** provide nested objects or attribute lookups:
+```python
+# WRONG: This will not work
+device = {
+    'name': 'device-1',
+    'site': {'name': 'NYC-DC1'},  # WRONG!
+}
+```
+
+### Recommended Client Workflow
+
+1. **Export reference data first:**
+   ```python
+   sites = client.export('dcim.site')
+   ```
+
+2. **Build PK mapping tables:**
+   ```python
+   import json
+   import gzip
+
+   with gzip.open(sites['path'], 'rt') as f:
+       site_name_to_pk = {}
+       for line in f:
+           row = json.loads(line)
+           site_name_to_pk[row['name']] = row['id']
+   ```
+
+3. **Transform source data to use PKs:**
+   ```python
+   source_data['site_id'] = site_name_to_pk[source_data['site_name']]
+   ```
+
+4. **Submit bulk load with resolved PKs**
+
+## Post-Operation Hooks
+
+TurboBulk provides post-operation hooks to handle necessary updates after bulk operations.
+
+### Available Hooks
+
+| Hook | Default | Purpose | Performance Impact |
+|------|---------|---------|-------------------|
+| `fix_denormalized` | `true` | Sync denormalized site/location fields on components after device moves | Low |
+| `rebuild_search_index` | `true` | Update NetBox's global search index for affected objects | Medium |
+| `rebuild_cable_paths` | `true` | Recalculate cable path traces after cable changes | High |
+| `fix_counters` | `true` | Update counter cache fields (e.g., `_interface_count`) | Low |
+
+### Configuring Hooks
+
+**Using Python client:**
+```python
+from turbobulk_client import TurboBulkClient
+
+client = TurboBulkClient()
+result = client.load(
+    'dcim.device',
+    'devices.jsonl.gz',
+    post_hooks={
+        'fix_denormalized': True,
+        'rebuild_search_index': True,
+        'fix_counters': True,
+        'rebuild_cable_paths': False,  # Skip for non-cable operations
+    }
+)
+```
+
+### When to Disable Hooks
+
+| Hook | Disable When |
+|------|-------------|
+| `fix_denormalized` | **Never** - disabling causes data inconsistency |
+| `rebuild_search_index` | Large imports (>100K rows) - rebuild manually after all imports complete |
+| `rebuild_cable_paths` | Non-cable operations (devices, sites, etc.) |
+| `fix_counters` | **Rarely** - only if doing multi-stage imports where counts will be wrong temporarily |
+
+## Operational Runbooks
+
+### Initial Data Load Runbook
+
+**Goal:** Load initial data from an external system into a fresh NetBox instance.
+
+**Steps:**
+
+1. **Export reference data (if migrating from another NetBox)**
+   ```python
+   client = TurboBulkClient()
+
+   # Export sites, manufacturers, device types first
+   client.export('dcim.site')
+   client.export('dcim.manufacturer')
+   client.export('dcim.devicetype')
+   ```
+
+2. **Build PK mapping tables**
+   - Map source system IDs to NetBox PKs
+   - Create lookup dictionaries for FK resolution
+
+3. **Transform source data to use PKs**
+   - Replace string/name references with integer PKs
+   - Ensure all required fields are present
+
+4. **Load in dependency order**
+   ```
+   a. Sites, Regions, Locations
+   b. Manufacturers, Device Types, Device Roles
+   c. Racks
+   d. Devices
+   e. Interfaces
+   f. IP Addresses
+   g. Cables
+   ```
+
+5. **Run post-load validation**
+   - Verify counts match source
+   - Spot-check a sample of devices
+   - Verify FK relationships are correct
+
+### Ongoing Sync Runbook
+
+**Goal:** Synchronize data from an external CMDB on a regular schedule.
+
+**Steps:**
+
+1. **Export current state**
+   ```python
+   result = client.export(
+       'dcim.device',
+       fields=['id', 'name', 'site_id', 'status']
+   )
+   ```
+
+2. **Identify changes**
+   - Compare exported data with source system
+   - Categorize: inserts, updates, deletes
+
+3. **Submit bulk operations**
+   - Upserts for inserts + updates
+   - Deletes for removed records
+
+4. **Verify job success**
+   ```python
+   # The client automatically waits for completion
+   result = client.load('dcim.device', 'devices.jsonl.gz', mode='upsert')
+   print(f"Rows affected: {result['data']['rows_affected']}")
+   ```
+
+5. **Spot-check critical changes**
+
+### Troubleshooting Guide
+
+| Error | Cause | Resolution |
+|-------|-------|------------|
+| `foreign key violation` | Referenced object doesn't exist | Load parent objects first; verify FK PKs are correct |
+| `unique constraint violation` | Duplicate key in data | Deduplicate source data or use upsert mode |
+| `schema mismatch` | Columns don't match model | Regenerate data using `/models/` endpoint schema |
+| `permission denied` | User lacks model permissions | Request add/change/delete permissions from your administrator |
+| `file size exceeded` | Upload too large | Split your data into smaller files or contact support |
+
+## Platform Configuration
+
+NetBox Cloud and NetBox Enterprise come with TurboBulk pre-configured with optimized settings:
+
+- **Maximum upload size:** 1GB per file
+- **Job timeout:** 1 hour maximum
+- **Export caching:** Enabled
+
+If you need adjustments to these limits for your use case, contact NetBox Labs support.
+
+## Security Considerations
+
+- All operations require authentication via NetBox token
+- Standard NetBox model permissions are enforced
+- Bulk add requires `add` permission
+- Bulk upsert requires `add` + `change` permissions
+- Bulk delete requires `delete` permission
+- Bulk export requires `view` permission
+- File uploads are validated for format and size
+
+## Changelog Generation
+
+TurboBulk generates ObjectChange records by default, providing full audit trail support in NetBox's changelog system.
+
+### Enabling/Disabling Changelogs
+
+```python
+# Default - changelogs enabled
+result = client.load('dcim.device', 'devices.jsonl.gz')
+
+# Disable for performance-critical operations
+result = client.load('dcim.device', 'devices.jsonl.gz', create_changelogs=False)
+```
+
+**When to disable changelogs:**
+- Initial data migrations where audit trail is not required
+- Large imports (>100K rows) where changelog table growth is a concern
+- Ephemeral or test data
+- Performance-critical operations
+
+**When to keep changelogs enabled:**
+- Production data changes that need auditing
+- Compliance requirements for change tracking
+- Troubleshooting - having before/after data helps debug issues
+
+## Event Dispatch
+
+TurboBulk dispatches events (webhooks, event rules) asynchronously after bulk operations complete.
+
+### Configuration
+
+```python
+# Default - events dispatched
+result = client.load('dcim.device', 'devices.jsonl.gz')
+
+# Disable for initial data loads
+result = client.load('dcim.device', 'devices.jsonl.gz', dispatch_events=False)
+```
+
+**When to disable events:**
+- Initial data migrations where downstream systems don't need notifications
+- Large imports where event volume would overwhelm consumers
+- Test data loads
+
+## Export Caching
+
+TurboBulk caches export results to improve performance for repeated requests.
+
+### How It Works
+
+1. Client requests an export
+2. If data hasn't changed since last export → returns cached file immediately
+3. Otherwise → creates new export job
+
+### Cache-Aware Workflow
+
+```python
+# Check if data changed without downloading
+result = client.export('dcim.device', check_cache_only=True)
+
+if result.get('cached'):
+    print("Data unchanged, using local file")
+else:
+    # Data changed, get fresh export
+    result = client.export('dcim.device')
+```
+
+### Force Fresh Export
+
+```python
+# Bypass cache
+result = client.export('dcim.device', force_refresh=True)
+```
+
+## NetBox Branching Integration
+
+TurboBulk integrates with NetBox Branching for branch-aware bulk operations.
+
+### Basic Usage
+
+```python
+# Load data into a branch
+result = client.load(
+    'dcim.device',
+    'devices.jsonl.gz',
+    branch='my-feature-branch'
+)
+```
+
+### Workflow
+
+1. **Create a branch** (via NetBox UI or API)
+2. **Wait for branch to be ready** (status becomes `ready`)
+3. **Bulk load data to the branch**
+4. **Review changes** in NetBox Branch UI
+5. **Merge the branch** when satisfied
+
+For more detailed branching documentation, see [Branching Documentation](branching.md).

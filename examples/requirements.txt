@@ -1,0 +1,1 @@
+turbobulk-client[parquet]>=0.1.0
