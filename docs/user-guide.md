@@ -148,61 +148,165 @@ The bulk API deliberately bypasses certain NetBox features for performance. Unde
 
 ## Validation Modes
 
-TurboBulk provides flexible validation to balance speed and thoroughness.
+TurboBulk provides flexible validation to balance speed and thoroughness. Understanding what each mode validates is important for maintaining data integrity.
+
+### How TurboBulk Validation Differs from REST API
+
+When you create or update objects through NetBox's REST API, data passes through multiple validation layers:
+
+1. **Field-level validation** - Type checking, format constraints
+2. **Cross-field validation** - Fields that depend on each other
+3. **Model business logic** - NetBox's `clean()` methods that enforce rules like "device must be in the same site as its rack"
+4. **Custom validators** - User-defined validation rules
+5. **Database constraints** - Foreign keys, unique constraints
+
+TurboBulk bypasses some of these layers by default for performance. You can control this tradeoff with the `validation_mode` parameter.
 
 ### Available Modes
 
-Control validation behavior with the `validation_mode` parameter:
+| Mode | Performance | What Gets Validated |
+|------|-------------|---------------------|
+| `none` | Fastest | Database constraints only |
+| `auto` (default) | Fast | Database + IP/prefix hierarchy checks |
+| `full` | Substantially slower | Database + Django model validation |
 
-| Mode | Performance | Coverage | Use When |
-|------|-------------|----------|----------|
-| `none` | Fastest | DB constraints only | Trusted data, migrations |
-| `auto` (default) | Fast | DB + IP/prefix validation | Normal bulk operations |
-| `full` | Slower | Complete Django validation | Critical data, complex models |
+### Mode: `none`
 
-### When to Use Full Validation
+**What runs:**
+- PostgreSQL constraints: foreign keys, unique constraints, NOT NULL
 
-For models with complex business rules, use `validation_mode='full'`:
+**What's skipped:**
+- All application-level validation
+- Model business logic
 
-**Recommended for:**
-- `dcim.cable` - Cable profile compatibility
-- `dcim.device` - Rack position conflicts, primary IP assignment
-- `dcim.interface` - LAG membership, parent device consistency
-- `circuits.circuittermination` - Endpoint type validation
+**Use when:**
+- Data comes from a trusted source (another NetBox instance, validated CMDB)
+- You've pre-validated data externally
+- Maximum speed is critical
 
-**Example with validation_mode:**
+**Risks:**
+- Data that satisfies database constraints but violates business rules will be accepted
+- Example: A device assigned to a rack in a different site (DB allows it, but it's logically invalid)
+
+### Mode: `auto` (Default)
+
+**What runs:**
+- All database constraints
+- IP address hierarchy validation (parent prefix exists, VRF matches)
+- Prefix hierarchy validation (parent prefix exists, VRF matches)
+
+**What's skipped:**
+- Django model `clean()` methods
+- Custom validators
+
+**Use when:**
+- Normal bulk operations
+- IP address management workflows
+- Data from reasonably trusted sources
+
+**Risks:**
+- Model-specific business logic is not checked
+- Complex models (cables, devices with rack positions) may have invalid configurations
+
+### Mode: `full`
+
+**What runs:**
+- All database constraints
+- Django's `full_clean()` method on each object
+- Model-specific business logic (e.g., Device.clean(), Cable.clean())
+
+**What's skipped:**
+- Custom validators configured in PLUGINS_CONFIG
+- DRF serializer validation
+
+**Use when:**
+- Data comes from untrusted or unknown sources
+- Complex models with important business rules
+- Data integrity is more important than speed
+
+**Performance note:**
+Full validation is substantially slower because it runs Python validation code for each row instead of using bulk SQL operations. For large datasets, consider validating a sample first, or using the REST API for complex models.
+
+### Models That Benefit from Full Validation
+
+These models have significant business logic in their `clean()` methods:
+
+| Model | What `full` Validates |
+|-------|----------------------|
+| `dcim.cable` | Cable profile compatibility, endpoint validation |
+| `dcim.device` | Site/location/rack consistency, rack position bounds, primary IP assignment |
+| `dcim.interface` | LAG membership rules, parent device consistency |
+| `dcim.consoleport` | Cable connectivity rules |
+| `dcim.powerport` | Power supply chain validation |
+| `circuits.circuittermination` | Endpoint type validation |
+
+### What's Always Enforced
+
+Regardless of validation mode, these database constraints are always enforced:
+
+- **Foreign key references** - Referenced objects must exist
+- **Unique constraints** - No duplicate values in unique fields
+- **NOT NULL constraints** - Required fields must have values
+- **Check constraints** - Database-level value constraints
+
+If any of these fail, the entire operation rolls back with no partial commits.
+
+### Examples
+
+**Full validation for cables:**
+```python
+from turbobulk_client import TurboBulkClient
+
+client = TurboBulkClient()
+result = client.load(
+    'dcim.cable',
+    'cables.jsonl.gz',
+    validation_mode='full'  # Important for cables
+)
+```
+
+**No validation for trusted migration data:**
+```python
+result = client.load(
+    'dcim.site',
+    'sites.jsonl.gz',
+    validation_mode='none'  # Data already validated
+)
+```
+
+**Using curl:**
 ```bash
-# Full validation mode - catches all issues but slower
+# Full validation mode
 curl -X POST -H "Authorization: Bearer $TOKEN" \
   -F "model=dcim.cable" \
   -F "mode=insert" \
   -F "validation_mode=full" \
   -F "file=@cables.jsonl.gz" \
   "https://your-instance.cloud.netboxapp.com/api/plugins/turbobulk/load/"
-
-# No validation - for trusted migration data
-curl -X POST -H "Authorization: Bearer $TOKEN" \
-  -F "model=dcim.site" \
-  -F "mode=insert" \
-  -F "validation_mode=none" \
-  -F "file=@sites.jsonl.gz" \
-  "https://your-instance.cloud.netboxapp.com/api/plugins/turbobulk/load/"
 ```
 
 ### Best Practices
 
-1. **Validate first:** Test data before committing
+1. **Know your data source**
+   - Trusted source (another NetBox, validated CMDB) → `auto` or `none`
+   - Untrusted source (user spreadsheets, unknown systems) → `full`
+
+2. **Use `full` for complex models**
+   - Cables, devices with rack positions, interfaces with LAG membership
+
+3. **Validate before committing large datasets**
    ```python
-   result = client.validate('dcim.cable', 'cables.jsonl.gz')
-   if result['data']['valid']:
-       client.load('dcim.cable', 'cables.jsonl.gz')
+   # Test with a small sample first
+   result = client.load('dcim.device', 'sample.jsonl.gz', validation_mode='full')
    ```
 
-2. **Use `validation_mode='full'`** for complex models (cables, devices with rack positions)
+4. **Consider the REST API for small batches**
+   - Under 1,000 objects with complex validation needs
+   - The REST API provides the most thorough validation
 
-3. **Use `validation_mode='none'`** only for trusted data from another NetBox instance
-
-4. **Use REST API** for operations under 1000 objects where full validation is needed
+5. **Custom validators are not run**
+   - If you rely on custom validators in your NetBox configuration, those rules are not enforced by TurboBulk
+   - Consider pre-validating data or using the REST API for objects subject to custom validation rules
 
 ## Foreign Key Requirements
 
