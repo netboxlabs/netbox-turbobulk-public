@@ -7,11 +7,11 @@ High-level client for TurboBulk bulk data operations.
 import os
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Union
+from typing import Any, Dict, List, Optional, Union, cast
 
 import requests
 
-from .exceptions import TurboBulkError, JobFailedError
+from .exceptions import JobFailedError, TurboBulkError
 
 
 class TurboBulkClient:
@@ -73,7 +73,7 @@ class TurboBulkClient:
         """
         response = self.session.get(f"{self.api_base}/models/")
         response.raise_for_status()
-        return response.json()
+        return cast(List[Dict[Any, Any]], response.json())
 
     def get_model_schema(self, model: str) -> Dict:
         """
@@ -87,7 +87,7 @@ class TurboBulkClient:
         """
         response = self.session.get(f"{self.api_base}/models/{model}/")
         response.raise_for_status()
-        return response.json()
+        return cast(Dict[Any, Any], response.json())
 
     def get_template(self, model: str, include_optional: bool = False) -> Dict[str, Any]:
         """
@@ -277,7 +277,7 @@ class TurboBulkClient:
             )
 
         response.raise_for_status()
-        result = response.json()
+        result: Dict[Any, Any] = response.json()
 
         if not wait:
             return result
@@ -360,7 +360,7 @@ class TurboBulkClient:
             )
 
         response.raise_for_status()
-        result = response.json()
+        result: Dict[Any, Any] = response.json()
 
         if not wait:
             return result
@@ -450,7 +450,7 @@ class TurboBulkClient:
 
         # Handle 304 Not Modified
         if response.status_code == 304:
-            result = response.json() if response.content else {}
+            result: Dict[str, Any] = response.json() if response.content else {}
             result["status_code"] = 304
             result["cached"] = True
             if verbose:
@@ -592,19 +592,19 @@ class TurboBulkClient:
 
         if output_path is None:
             suffix = ".jsonl.gz" if format == "jsonl" else ".parquet"
-            fd, output_path = tempfile.mkstemp(suffix=suffix)
+            fd, temp_path = tempfile.mkstemp(suffix=suffix)
             os.close(fd)
-            output_path = Path(output_path)
+            final_path = Path(temp_path)
         else:
-            output_path = Path(output_path)
+            final_path = Path(output_path)
 
-        with open(output_path, "wb") as f:
+        with open(final_path, "wb") as f:
             f.write(download_response.content)
 
         if verbose:
-            print(f"Saved to: {output_path}")
+            print(f"Saved to: {final_path}")
 
-        return output_path
+        return final_path
 
     def get_job_status(self, job_id: str) -> Dict:
         """
@@ -618,7 +618,7 @@ class TurboBulkClient:
         """
         response = self.session.get(f"{self.api_base}/jobs/{job_id}/")
         response.raise_for_status()
-        return response.json()
+        return cast(Dict[Any, Any], response.json())
 
     def _wait_for_job(
         self,
@@ -674,7 +674,7 @@ class TurboBulkClient:
             endpoint = f"/{endpoint}"
         response = self.session.get(f"{self.base_url}{endpoint}", params=params)
         response.raise_for_status()
-        return response.json()
+        return cast(Dict[Any, Any], response.json())
 
     def rest_get_all(self, endpoint: str, params: Optional[Dict] = None) -> List[Dict]:
         """
@@ -699,7 +699,7 @@ class TurboBulkClient:
             if not next_url:
                 break
 
-            from urllib.parse import urlparse, parse_qs
+            from urllib.parse import parse_qs, urlparse
 
             parsed = urlparse(next_url)
             next_params = parse_qs(parsed.query)
@@ -726,4 +726,4 @@ class TurboBulkClient:
         results = data.get("results", [])
         if not results:
             raise TurboBulkError(f"ContentType not found: {app_label}.{model}")
-        return results[0]["id"]
+        return cast(int, results[0]["id"])
