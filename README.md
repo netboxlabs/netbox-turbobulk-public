@@ -26,13 +26,31 @@ pip install turbobulk-client
 pip install turbobulk-client[parquet]
 ```
 
+## Authentication
+
+TurboBulk uses your NetBox API token for authentication. The client auto-detects
+the token version from the format:
+
+| Token Version | Format | Auth Header |
+|---------------|--------|-------------|
+| **v2** (default in NetBox 4.5+) | `nbt_<key>.<plaintext>` | `Bearer nbt_<key>.<plaintext>` |
+| **v1** (legacy) | 40-character string | `Token <value>` |
+
+**Getting a v2 token:** When you create a token in NetBox 4.5+, the default version
+is v2. The full token value (starting with `nbt_`) is shown **only once** at creation
+time. Copy the complete value including the `nbt_` prefix — you'll need the entire
+string (e.g., `nbt_abc123defghi.longrandomstring...`).
+
+If you're using the NetBox API to create tokens, combine the `key` and `token`
+fields from the response: `nbt_<key>.<token>`.
+
 ## Quick Start
 
 ### Environment Setup
 
 ```bash
 export NETBOX_URL="https://your-instance-name.cloud.netboxapp.com"
-export NETBOX_TOKEN="nbt_your-api-token"
+export NETBOX_TOKEN="nbt_your-api-token"  # Full v2 token including nbt_ prefix
 ```
 
 ### Bulk Insert Sites

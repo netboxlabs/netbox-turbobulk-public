@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from turbobulk_client import TurboBulkClient
-from turbobulk_client.exceptions import TurboBulkError
+from turbobulk_client.exceptions import AuthenticationError, TurboBulkError
 
 
 class TestClientInitialization(unittest.TestCase):
@@ -466,6 +466,68 @@ class TestDeleteDryRun(unittest.TestCase):
                 self.assertNotIn("dry_run", form_data)
         finally:
             parquet_path.unlink()
+
+
+class TestAuthErrorHandling(unittest.TestCase):
+    """Tests for authentication error handling and v2 token hint."""
+
+    def test_403_with_non_nbt_token_includes_hint(self):
+        """403 with non-nbt_ token raises AuthenticationError with v2 format hint."""
+        client = TurboBulkClient("http://netbox:8080", "plaintext-only-token-value-40chars0000")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 403
+        mock_response.json.return_value = {"detail": "Invalid v1 token"}
+
+        with patch.object(client.session, "get", return_value=mock_response):
+            with self.assertRaises(AuthenticationError) as ctx:
+                client.get_models()
+
+        self.assertIn("nbt_", str(ctx.exception))
+        self.assertIn("v2 token", str(ctx.exception))
+
+    def test_403_with_nbt_token_no_hint(self):
+        """403 with nbt_ token raises AuthenticationError without v2 format hint."""
+        client = TurboBulkClient("http://netbox:8080", "nbt_key123456ab.plaintextvalue")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 403
+        mock_response.json.return_value = {"detail": "Invalid v2 token"}
+
+        with patch.object(client.session, "get", return_value=mock_response):
+            with self.assertRaises(AuthenticationError) as ctx:
+                client.get_models()
+
+        self.assertIn("Invalid v2 token", str(ctx.exception))
+        self.assertNotIn("does not start with", str(ctx.exception))
+
+    def test_401_with_non_nbt_token_includes_hint(self):
+        """401 with non-nbt_ token also includes the v2 format hint."""
+        client = TurboBulkClient("http://netbox:8080", "some-legacy-token")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 401
+        mock_response.json.return_value = {"detail": "Invalid v1 token"}
+
+        with patch.object(client.session, "get", return_value=mock_response):
+            with self.assertRaises(AuthenticationError) as ctx:
+                client.get_models()
+
+        self.assertIn("nbt_", str(ctx.exception))
+
+    def test_non_auth_error_raises_http_error(self):
+        """Non-auth HTTP errors (e.g. 500) raise standard HTTPError."""
+        import requests
+
+        client = TurboBulkClient("http://netbox:8080", "test-token")
+
+        mock_response = MagicMock(spec=requests.Response)
+        mock_response.status_code = 500
+        mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError("500 Server Error")
+
+        with patch.object(client.session, "get", return_value=mock_response):
+            with self.assertRaises(requests.exceptions.HTTPError):
+                client.get_models()
 
 
 if __name__ == "__main__":
