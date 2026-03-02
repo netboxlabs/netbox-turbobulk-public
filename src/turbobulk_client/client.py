@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Union, cast
 
 import requests
 
-from .exceptions import JobFailedError, TurboBulkError
+from .exceptions import AuthenticationError, JobFailedError, TurboBulkError
 
 
 class TurboBulkClient:
@@ -64,6 +64,28 @@ class TurboBulkClient:
         # TurboBulk API base
         self.api_base = f"{self.base_url}/api/plugins/turbobulk"
 
+    def _raise_for_status(self, response: requests.Response) -> None:
+        """Raise an appropriate exception for HTTP errors with helpful messages."""
+        if response.status_code in (401, 403):
+            detail = ""
+            try:
+                detail = response.json().get("detail", "")
+            except Exception:
+                pass
+
+            msg = f"{response.status_code} Authentication failed: {detail}"
+
+            if not self.token.startswith("nbt_"):
+                msg += (
+                    "\n\nHint: your token does not start with 'nbt_'. If you created a v2 token "
+                    "(default in NetBox 4.5+), you must use the full token value in the format: "
+                    "nbt_<key>.<plaintext>. See: https://github.com/netboxlabs/netbox-turbobulk-public#authentication"
+                )
+
+            raise AuthenticationError(msg)
+
+        response.raise_for_status()
+
     def get_models(self) -> List[Dict]:
         """
         List available models with their schemas.
@@ -72,7 +94,7 @@ class TurboBulkClient:
             List of model info dicts with app_label, model_name, etc.
         """
         response = self.session.get(f"{self.api_base}/models/")
-        response.raise_for_status()
+        self._raise_for_status(response)
         return cast(List[Dict[Any, Any]], response.json())
 
     def get_model_schema(self, model: str) -> Dict:
@@ -86,7 +108,7 @@ class TurboBulkClient:
             Schema dict with fields, constraints, etc.
         """
         response = self.session.get(f"{self.api_base}/models/{model}/")
-        response.raise_for_status()
+        self._raise_for_status(response)
         return cast(Dict[Any, Any], response.json())
 
     def get_template(self, model: str, include_optional: bool = False) -> Dict[str, Any]:
@@ -276,7 +298,7 @@ class TurboBulkClient:
                 files=files,
             )
 
-        response.raise_for_status()
+        self._raise_for_status(response)
         result: Dict[Any, Any] = response.json()
 
         if not wait:
@@ -359,7 +381,7 @@ class TurboBulkClient:
                 files=files,
             )
 
-        response.raise_for_status()
+        self._raise_for_status(response)
         result: Dict[Any, Any] = response.json()
 
         if not wait:
@@ -457,7 +479,7 @@ class TurboBulkClient:
                 print(f"Cache current: client file is up to date")
             return result
 
-        response.raise_for_status()
+        self._raise_for_status(response)
         result = response.json()
         result["status_code"] = response.status_code
 
@@ -588,7 +610,7 @@ class TurboBulkClient:
             print(f"Downloading export file...")
 
         download_response = self.session.get(url)
-        download_response.raise_for_status()
+        self._raise_for_status(download_response)
 
         if output_path is None:
             suffix = ".jsonl.gz" if format == "jsonl" else ".parquet"
@@ -617,7 +639,7 @@ class TurboBulkClient:
             Job status dict
         """
         response = self.session.get(f"{self.api_base}/jobs/{job_id}/")
-        response.raise_for_status()
+        self._raise_for_status(response)
         return cast(Dict[Any, Any], response.json())
 
     def _wait_for_job(
@@ -673,7 +695,7 @@ class TurboBulkClient:
         if not endpoint.startswith("/"):
             endpoint = f"/{endpoint}"
         response = self.session.get(f"{self.base_url}{endpoint}", params=params)
-        response.raise_for_status()
+        self._raise_for_status(response)
         return cast(Dict[Any, Any], response.json())
 
     def rest_get_all(self, endpoint: str, params: Optional[Dict] = None) -> List[Dict]:
