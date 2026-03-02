@@ -523,7 +523,9 @@ class TestAuthErrorHandling(unittest.TestCase):
 
         mock_response = MagicMock(spec=requests.Response)
         mock_response.status_code = 500
-        mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError("500 Server Error")
+        mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(
+            "500 Server Error"
+        )
 
         with patch.object(client.session, "get", return_value=mock_response):
             with self.assertRaises(requests.exceptions.HTTPError):
