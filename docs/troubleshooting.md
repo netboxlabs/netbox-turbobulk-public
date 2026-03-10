@@ -96,6 +96,7 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
 |-------|-------|------------|
 | `permission denied` | User lacks model permissions | Request permissions from your administrator |
 | `User lacks permission: dcim.add_device` | Missing add permission | Request `add_device` permission |
+| `TurboBulk write operations are disabled` | Plugin configured with `enable_writes: False` | Ask your administrator to set `enable_writes` to `True` in `PLUGINS_CONFIG['netbox_turbobulk']` |
 
 **Required permissions by operation:**
 - **Insert**: `add` permission on target model

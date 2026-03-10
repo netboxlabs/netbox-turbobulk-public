@@ -515,6 +515,27 @@ class TestAuthErrorHandling(unittest.TestCase):
 
         self.assertIn("nbt_", str(ctx.exception))
 
+    def test_403_writes_disabled_raises_turbobulk_error(self):
+        """403 with 'write operations are disabled' raises TurboBulkError, not AuthenticationError."""
+        client = TurboBulkClient("http://netbox:8080", "nbt_key123456ab.plaintextvalue")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 403
+        mock_response.json.return_value = {
+            "detail": "TurboBulk write operations are disabled. "
+            "Set 'enable_writes' to True in PLUGINS_CONFIG to enable."
+        }
+
+        with patch.object(client.session, "post", return_value=mock_response):
+            with self.assertRaises(TurboBulkError) as ctx:
+                client.session.post.return_value = mock_response
+                client._raise_for_status(mock_response)
+
+        # Should be TurboBulkError, not AuthenticationError
+        self.assertNotIsInstance(ctx.exception, AuthenticationError)
+        self.assertIn("write operations are disabled", str(ctx.exception))
+        self.assertIn("enable_writes", str(ctx.exception))
+
     def test_non_auth_error_raises_http_error(self):
         """Non-auth HTTP errors (e.g. 500) raise standard HTTPError."""
         import requests

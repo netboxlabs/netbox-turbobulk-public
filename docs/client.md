@@ -199,16 +199,23 @@ pq.write_table(table, 'sites.parquet')
 ## Error Handling
 
 ```python
-from turbobulk_client import TurboBulkClient, TurboBulkError, JobFailedError
+from turbobulk_client import TurboBulkClient, TurboBulkError, JobFailedError, AuthenticationError
 
 try:
     result = client.load('dcim.site', 'sites.jsonl.gz')
+except AuthenticationError as e:
+    print(f"Auth error: {e}")  # Invalid token or missing permissions
 except JobFailedError as e:
     print(f"Job failed: {e}")
     print(f"Error details: {e.job_result}")
 except TurboBulkError as e:
+    # Includes server-side config errors like write operations disabled
     print(f"Client error: {e}")
 ```
+
+**Note:** If the server has `enable_writes` set to `False` in plugin config, load and delete
+operations will raise `TurboBulkError` with a message indicating write operations are disabled.
+Export and read operations are unaffected.
 
 ## Export Caching
 

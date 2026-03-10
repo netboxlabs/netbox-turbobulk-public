@@ -122,6 +122,7 @@ Rows inserted: 10
 | `FK value=0` errors | Use `_id` suffix for FK columns (e.g., `site_id`) |
 | Jobs stuck in `pending` | Contact support |
 | `Permission denied` | Request add/change/delete permissions from your administrator |
+| `Write operations are disabled` | The server has `enable_writes: False` set — contact your administrator |
 
 ## Getting Help
 

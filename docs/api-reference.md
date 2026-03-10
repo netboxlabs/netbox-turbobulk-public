@@ -510,6 +510,13 @@ Post hooks can be configured per-request:
 }
 ```
 
+Or, when write operations are disabled at the plugin level (load/delete only):
+```json
+{
+  "detail": "TurboBulk write operations are disabled. Set 'enable_writes' to True in PLUGINS_CONFIG to enable."
+}
+```
+
 ### File Too Large (413)
 ```json
 {

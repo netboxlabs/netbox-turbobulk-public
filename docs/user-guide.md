@@ -486,12 +486,14 @@ result = client.load(
 | `unique constraint violation` | Duplicate key in data | Deduplicate source data or use upsert mode |
 | `schema mismatch` | Columns don't match model | Regenerate data using `/models/` endpoint schema |
 | `permission denied` | User lacks model permissions | Request add/change/delete permissions from your administrator |
+| `write operations are disabled` | Plugin configured with `enable_writes: False` | Contact your administrator to enable write APIs |
 | `file size exceeded` | Upload too large | Split your data into smaller files or contact support |
 
 ## Platform Configuration
 
 NetBox Cloud and NetBox Enterprise come with TurboBulk pre-configured with optimized settings:
 
+- **Write APIs:** Enabled by default (`enable_writes: True`). When disabled, load and delete endpoints return 403 while export and read endpoints remain available.
 - **Maximum upload size:** 1GB per file
 - **Job timeout:** 1 hour maximum
 - **Export caching:** Enabled

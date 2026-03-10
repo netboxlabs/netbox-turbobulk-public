@@ -321,6 +321,7 @@ Features:
 | "FK value=0" | Wrong column name for FK | Use `_id` suffix (e.g., `site_id` not `site`) |
 | "Unique constraint violation" | Duplicate key | Use upsert mode or change prefix |
 | "Permission denied" | Missing permissions | Grant add/change/delete on model |
+| "Write operations are disabled" | Server has `enable_writes: False` | Contact administrator |
 | "Connection refused" | NetBox not running | Check NETBOX_URL |
 
 ### 11 - Event Streams Integration

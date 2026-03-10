@@ -73,6 +73,12 @@ class TurboBulkClient:
             except Exception:
                 pass
 
+            # Distinguish server-side write disable from auth failures
+            if "write operations are disabled" in str(detail).lower():
+                raise TurboBulkError(
+                    f"{response.status_code} {detail}"
+                )
+
             msg = f"{response.status_code} Authentication failed: {detail}"
 
             if not self.token.startswith("nbt_"):
