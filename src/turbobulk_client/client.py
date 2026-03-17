@@ -618,6 +618,22 @@ class TurboBulkClient:
         download_response = self.session.get(url)
         self._raise_for_status(download_response)
 
+        # Cloud storage backends (S3/GCS/Azure) return a JSON redirect instead of
+        # streaming the file directly. Detect this and follow the presigned URL.
+        # Presigned URLs are self-authenticating — do NOT send auth headers.
+        content_type = download_response.headers.get("content-type", "")
+        if "application/json" in content_type:
+            try:
+                json_body = download_response.json()
+                presigned_url = json_body.get("download_url")
+                if presigned_url:
+                    download_response = requests.get(
+                        presigned_url, verify=self.verify_ssl
+                    )
+                    download_response.raise_for_status()
+            except (ValueError, KeyError):
+                pass  # Not a redirect response, save whatever we received
+
         if output_path is None:
             suffix = ".jsonl.gz" if format == "jsonl" else ".parquet"
             fd, temp_path = tempfile.mkstemp(suffix=suffix)
