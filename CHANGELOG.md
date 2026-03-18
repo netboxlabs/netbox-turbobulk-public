@@ -5,6 +5,19 @@ All notable changes to the TurboBulk Client will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-03-18
+
+### Fixed
+
+- **Cloud storage downloads**: When NetBox uses cloud storage (S3, GCS, Azure), export downloads now work correctly via HTTP 302 redirects to presigned URLs. Previously, clients received a JSON wrapper `{"download_url": "..."}` instead of the actual file, causing silent data corruption.
+- **Streaming downloads**: Downloads now stream to disk via `iter_content()` instead of loading the entire file into memory, reducing memory usage for large exports.
+- **Presigned URL auth**: Redirect-followed requests to presigned URLs no longer include the NetBox authorization header, which caused 403 errors on some cloud providers.
+
+### Changed
+
+- `_download_export_file()` now uses `allow_redirects=False` and follows redirects manually to strip auth headers for presigned URLs.
+- Minimum compatible server version: 0.1.1 (server must return 302 redirects for cloud storage).
+
 ## [0.1.0] - 2025-02-04
 
 ### Added

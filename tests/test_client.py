@@ -553,5 +553,148 @@ class TestAuthErrorHandling(unittest.TestCase):
                 client.get_models()
 
 
+class TestDownloadHandling(unittest.TestCase):
+    """Tests for _download_export_file redirect and streaming behavior."""
+
+    def setUp(self):
+        self.client = TurboBulkClient("http://netbox:8080", "nbt_key.token123")
+
+    def _mock_response(self, status_code=200, content=b"file data", headers=None, is_redirect=False):
+        """Create a mock response with streaming support."""
+        import requests
+
+        resp = MagicMock(spec=requests.Response)
+        resp.status_code = status_code
+        resp.headers = headers or {}
+        resp.is_redirect = is_redirect
+        resp.iter_content = MagicMock(return_value=[content])
+        resp.content = content
+        resp.close = MagicMock()
+        resp.raise_for_status = MagicMock()
+        return resp
+
+    def test_download_handles_302_redirect(self):
+        """302 from server is followed via a bare GET to the presigned URL."""
+        redirect_resp = self._mock_response(
+            status_code=302,
+            is_redirect=True,
+            headers={"Location": "https://s3.amazonaws.com/bucket/file.jsonl.gz?sig=abc"},
+        )
+        final_resp = self._mock_response(content=b"real file data")
+
+        with patch.object(self.client.session, "get", return_value=redirect_resp):
+            with patch("turbobulk_client.client.requests.get", return_value=final_resp) as bare_get:
+                path = self.client._download_export_file(
+                    f"{self.client.api_base}/jobs/123/download/",
+                    None,
+                    "jsonl",
+                    False,
+                )
+
+        # Verify the redirect was followed with a bare requests.get
+        bare_get.assert_called_once_with(
+            "https://s3.amazonaws.com/bucket/file.jsonl.gz?sig=abc",
+            stream=True,
+            verify=True,
+        )
+        # File was written
+        self.assertTrue(path.exists())
+        self.assertEqual(path.read_bytes(), b"real file data")
+        path.unlink()
+
+    def test_download_redirect_no_auth_headers(self):
+        """Presigned URL request must not carry Authorization headers."""
+        redirect_resp = self._mock_response(
+            status_code=302,
+            is_redirect=True,
+            headers={"Location": "https://storage.cloud.google.com/bucket/file.parquet?token=xyz"},
+        )
+        final_resp = self._mock_response(content=b"parquet data")
+
+        with patch.object(self.client.session, "get", return_value=redirect_resp):
+            with patch("turbobulk_client.client.requests.get", return_value=final_resp) as bare_get:
+                path = self.client._download_export_file(
+                    f"{self.client.api_base}/jobs/456/download/",
+                    None,
+                    "parquet",
+                    False,
+                )
+
+        # bare requests.get (not session.get) means no auth headers
+        call_kwargs = bare_get.call_args
+        # The call should NOT include any Authorization header — it uses
+        # requests.get() directly, not self.session.get()
+        self.assertNotIn("headers", call_kwargs.kwargs)
+        path.unlink()
+
+    def test_download_200_binary_writes_directly(self):
+        """200 response (local storage) writes content directly to disk."""
+        direct_resp = self._mock_response(content=b"local file bytes")
+
+        with patch.object(self.client.session, "get", return_value=direct_resp):
+            path = self.client._download_export_file(
+                f"{self.client.api_base}/jobs/789/download/",
+                None,
+                "jsonl",
+                False,
+            )
+
+        self.assertTrue(path.exists())
+        self.assertEqual(path.read_bytes(), b"local file bytes")
+        path.unlink()
+
+    def test_download_streams_to_disk(self):
+        """File is written via iter_content, not response.content."""
+        chunks = [b"chunk1", b"chunk2", b"chunk3"]
+        resp = self._mock_response()
+        resp.iter_content = MagicMock(return_value=iter(chunks))
+
+        with patch.object(self.client.session, "get", return_value=resp):
+            path = self.client._download_export_file(
+                f"{self.client.api_base}/jobs/abc/download/",
+                None,
+                "jsonl",
+                False,
+            )
+
+        # iter_content was called with chunk_size
+        resp.iter_content.assert_called_once_with(chunk_size=8192)
+        self.assertEqual(path.read_bytes(), b"chunk1chunk2chunk3")
+        path.unlink()
+
+    def test_download_error_raises(self):
+        """HTTP errors during download raise appropriate exception."""
+        import requests as req
+
+        error_resp = self._mock_response(status_code=404)
+        error_resp.raise_for_status.side_effect = req.exceptions.HTTPError("404 Not Found")
+
+        with patch.object(self.client.session, "get", return_value=error_resp):
+            with self.assertRaises(req.exceptions.HTTPError):
+                self.client._download_export_file(
+                    f"{self.client.api_base}/jobs/999/download/",
+                    None,
+                    "jsonl",
+                    False,
+                )
+
+    def test_download_relative_url_prepends_base(self):
+        """Relative URLs get base_url prepended."""
+        resp = self._mock_response(content=b"data")
+
+        with patch.object(self.client.session, "get", return_value=resp) as mock_get:
+            path = self.client._download_export_file(
+                "/api/plugins/turbobulk/jobs/123/download/",
+                None,
+                "jsonl",
+                False,
+            )
+
+        # Should have prepended the base URL
+        called_url = mock_get.call_args[0][0]
+        self.assertTrue(called_url.startswith("http://netbox:8080"))
+        path.unlink()
+
+
 if __name__ == "__main__":
     unittest.main()

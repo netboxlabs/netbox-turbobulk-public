@@ -606,17 +606,35 @@ class TurboBulkClient:
         format: str,
         verbose: bool,
     ) -> Path:
-        """Download an export file from URL."""
+        """
+        Download an export file from URL.
+
+        Handles both direct file responses (local storage) and HTTP 302
+        redirects to presigned URLs (cloud storage). Streams content to
+        disk to avoid loading entire files into memory.
+        """
         import tempfile
 
         if url.startswith("/"):
             url = f"{self.base_url}{url}"
 
         if verbose:
-            print(f"Downloading export file...")
+            print("Downloading export file...")
 
-        download_response = self.session.get(url)
-        self._raise_for_status(download_response)
+        # Request without following redirects so we can strip auth for presigned URLs
+        response = self.session.get(url, allow_redirects=False, stream=True)
+
+        if response.is_redirect:
+            # Cloud storage: follow the presigned URL without auth headers
+            presigned_url = response.headers["Location"]
+            response.close()
+            if verbose:
+                print("Following redirect to cloud storage...")
+            response = requests.get(
+                presigned_url, stream=True, verify=self.verify_ssl
+            )
+
+        self._raise_for_status(response)
 
         if output_path is None:
             suffix = ".jsonl.gz" if format == "jsonl" else ".parquet"
@@ -627,7 +645,10 @@ class TurboBulkClient:
             final_path = Path(output_path)
 
         with open(final_path, "wb") as f:
-            f.write(download_response.content)
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+
+        response.close()
 
         if verbose:
             print(f"Saved to: {final_path}")
