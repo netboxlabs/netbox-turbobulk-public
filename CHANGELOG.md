@@ -5,6 +5,12 @@ All notable changes to the TurboBulk Client will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-03-18
+
+### Added
+
+- **Server: `?stream=true` parameter**: Download endpoints now accept `?stream=true` to bypass presigned URL redirects and stream the file through Django. This is useful for browser-based API clients (e.g. Visual Explorer) where `fetch()` would hit CORS errors following cross-origin redirects to cloud storage. The Python client does not need this parameter — it handles redirects natively.
+
 ## [0.1.1] - 2026-03-18
 
 ### Fixed
