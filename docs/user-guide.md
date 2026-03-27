@@ -493,7 +493,7 @@ result = client.load(
 
 NetBox Cloud and NetBox Enterprise come with TurboBulk pre-configured with optimized settings:
 
-- **Write APIs:** Enabled by default (`enable_writes: True`). When disabled, load and delete endpoints return 403 while export and read endpoints remain available.
+- **Write APIs:** Disabled by default (`enable_writes: False`). When disabled, load and delete endpoints return 403 while export and read endpoints remain available. Set `enable_writes: True` to enable write operations.
 - **Maximum upload size:** 1GB per file
 - **Job timeout:** 1 hour maximum
 - **Export caching:** Enabled

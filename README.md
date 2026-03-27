@@ -246,7 +246,7 @@ The [examples directory](examples/) contains progressive tutorials:
 - NetBox Cloud or NetBox Enterprise with TurboBulk enabled
 - Python 3.10+
 - API token with appropriate permissions
-- Write APIs (load, delete) require `enable_writes: True` in server plugin config (enabled by default)
+- Write APIs (load, delete) require `enable_writes: True` in server plugin config (disabled by default)
 
 ## License
 
