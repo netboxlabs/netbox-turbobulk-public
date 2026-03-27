@@ -75,9 +75,7 @@ class TurboBulkClient:
 
             # Distinguish server-side write disable from auth failures
             if "write operations are disabled" in str(detail).lower():
-                raise TurboBulkError(
-                    f"{response.status_code} {detail}"
-                )
+                raise TurboBulkError(f"{response.status_code} {detail}")
 
             msg = f"{response.status_code} Authentication failed: {detail}"
 
@@ -630,9 +628,7 @@ class TurboBulkClient:
             response.close()
             if verbose:
                 print("Following redirect to cloud storage...")
-            response = requests.get(
-                presigned_url, stream=True, verify=self.verify_ssl
-            )
+            response = requests.get(presigned_url, stream=True, verify=self.verify_ssl)
 
         self._raise_for_status(response)
 

@@ -559,7 +559,9 @@ class TestDownloadHandling(unittest.TestCase):
     def setUp(self):
         self.client = TurboBulkClient("http://netbox:8080", "nbt_key.token123")
 
-    def _mock_response(self, status_code=200, content=b"file data", headers=None, is_redirect=False):
+    def _mock_response(
+        self, status_code=200, content=b"file data", headers=None, is_redirect=False
+    ):
         """Create a mock response with streaming support."""
         import requests
 
