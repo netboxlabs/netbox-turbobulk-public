@@ -698,5 +698,74 @@ class TestDownloadHandling(unittest.TestCase):
         path.unlink()
 
 
+class TestLoadApplySaveHooks(unittest.TestCase):
+    """Tests for load() with apply_save_hooks parameter."""
+
+    def setUp(self):
+        self.client = TurboBulkClient("http://netbox:8080", "test-token")
+
+    def _make_parquet(self):
+        """Create a temporary parquet file for testing."""
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+
+        f = tempfile.NamedTemporaryFile(suffix=".parquet", delete=False)
+        table = pa.table({"name": ["test"]})
+        pq.write_table(table, f.name)
+        f.close()
+        return Path(f.name)
+
+    def test_apply_save_hooks_true(self):
+        """apply_save_hooks=True sends 'true' in form data."""
+        path = self._make_parquet()
+        try:
+            mock_response = MagicMock()
+            mock_response.json.return_value = {"job_id": "test-job-id"}
+            mock_response.raise_for_status = MagicMock()
+
+            with patch.object(self.client.session, "post", return_value=mock_response) as mock_post:
+                with patch.object(self.client, "_wait_for_job", return_value={"status": "success"}):
+                    self.client.load("dcim.device", path, apply_save_hooks=True)
+
+                form_data = mock_post.call_args.kwargs.get("data", {})
+                self.assertEqual(form_data.get("apply_save_hooks"), "true")
+        finally:
+            path.unlink()
+
+    def test_apply_save_hooks_false(self):
+        """apply_save_hooks=False sends 'false' in form data."""
+        path = self._make_parquet()
+        try:
+            mock_response = MagicMock()
+            mock_response.json.return_value = {"job_id": "test-job-id"}
+            mock_response.raise_for_status = MagicMock()
+
+            with patch.object(self.client.session, "post", return_value=mock_response) as mock_post:
+                with patch.object(self.client, "_wait_for_job", return_value={"status": "success"}):
+                    self.client.load("dcim.device", path, apply_save_hooks=False)
+
+                form_data = mock_post.call_args.kwargs.get("data", {})
+                self.assertEqual(form_data.get("apply_save_hooks"), "false")
+        finally:
+            path.unlink()
+
+    def test_apply_save_hooks_none_omitted(self):
+        """apply_save_hooks=None (default) omits param from form data."""
+        path = self._make_parquet()
+        try:
+            mock_response = MagicMock()
+            mock_response.json.return_value = {"job_id": "test-job-id"}
+            mock_response.raise_for_status = MagicMock()
+
+            with patch.object(self.client.session, "post", return_value=mock_response) as mock_post:
+                with patch.object(self.client, "_wait_for_job", return_value={"status": "success"}):
+                    self.client.load("dcim.device", path)
+
+                form_data = mock_post.call_args.kwargs.get("data", {})
+                self.assertNotIn("apply_save_hooks", form_data)
+        finally:
+            path.unlink()
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "turbobulk-client"
-version = "0.1.4"
+version = "0.1.5"
 description = "Python client for TurboBulk NetBox plugin - High-performance bulk data operations for NetBox"
 readme = "README.md"
 license = "Apache-2.0"
