@@ -183,6 +183,7 @@ class TurboBulkClient:
         mode: str = "insert",
         conflict_fields: Optional[List[str]] = None,
         validation_mode: str = "auto",
+        apply_save_hooks: Optional[bool] = None,
         wait: bool = True,
         poll_interval: float = 1.0,
         timeout: int = 3600,
@@ -199,6 +200,8 @@ class TurboBulkClient:
             mode: 'insert' or 'upsert'
             conflict_fields: Fields for upsert conflict detection
             validation_mode: 'none', 'auto' (default), or 'full'
+            apply_save_hooks: Apply post-merge SQL fixups for computed
+                fields (server default: False). None=use server default.
             wait: If True, poll until validation completes
             poll_interval: Seconds between status polls
             timeout: Max seconds to wait for completion
@@ -213,6 +216,7 @@ class TurboBulkClient:
             mode=mode,
             conflict_fields=conflict_fields,
             validation_mode=validation_mode,
+            apply_save_hooks=apply_save_hooks,
             dry_run=True,
             wait=wait,
             poll_interval=poll_interval,
@@ -231,6 +235,7 @@ class TurboBulkClient:
         post_hooks: Optional[Dict[str, bool]] = None,
         create_changelogs: bool = True,
         dispatch_events: Optional[bool] = None,
+        apply_save_hooks: Optional[bool] = None,
         branch: Optional[str] = None,
         dry_run: bool = False,
         wait: bool = True,
@@ -253,6 +258,12 @@ class TurboBulkClient:
             create_changelogs: Generate ObjectChange records (default: True)
             dispatch_events: Override global event dispatch setting
                 (True=dispatch, False=skip, None=use global config)
+            apply_save_hooks: Apply post-merge SQL fixups for computed fields
+                (server default: False). When enabled, uses bulk SQL to populate
+                Device.location (from Rack), custom field defaults, unit
+                normalizations (_abs_weight, _abs_length), scope cache fields,
+                and more. Falls back to per-object save() only for plugin models
+                with custom save() overrides. None=use server default.
             branch: Target branch name (requires netbox-branching)
             dry_run: If True, validate data without committing changes
             wait: If True, poll until job completes
@@ -288,6 +299,8 @@ class TurboBulkClient:
             data["post_hooks"] = json.dumps(post_hooks)
         if dispatch_events is not None:
             data["dispatch_events"] = str(dispatch_events).lower()
+        if apply_save_hooks is not None:
+            data["apply_save_hooks"] = str(apply_save_hooks).lower()
         if branch:
             data["branch"] = branch
         if dry_run:

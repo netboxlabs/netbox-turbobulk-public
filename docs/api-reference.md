@@ -123,6 +123,7 @@ Submits a bulk insert or upsert job.
 | `conflict_constraint` | string | No | Named constraint for expression-based conflicts (overrides `conflict_fields`) |
 | `dry_run` | boolean | No | Validate without committing (default: false) |
 | `create_changelogs` | boolean | No | Generate ObjectChange records (default: true) |
+| `apply_save_hooks` | boolean | No | Apply post-merge SQL fixups for computed fields (default: false). When enabled, uses bulk SQL to populate Device.location (from Rack), custom field defaults, unit normalizations (`_abs_weight`, `_abs_length`), scope cache fields, airflow/platform inheritance from DeviceType, and more. Near-zero overhead for known models. Falls back to per-object `save()` only for plugin models with custom save() overrides. |
 | `branch` | string | No | Target branch name (requires netbox-branching) |
 | `post_hooks` | object | No | Hook configuration |
 | `dispatch_events` | boolean | No | Override global event dispatch setting. `true`=dispatch events, `false`=skip events, `null`=use global config (default: null) |

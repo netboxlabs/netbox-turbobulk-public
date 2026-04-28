@@ -110,6 +110,7 @@ result = client.load(
     },
     create_changelogs=True,     # Generate ObjectChange records
     dispatch_events=None,       # True/False/None (None=use global config)
+    apply_save_hooks=True,      # Apply SQL fixups for computed fields (location inheritance, CF defaults)
 )
 ```
 

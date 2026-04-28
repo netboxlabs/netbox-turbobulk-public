@@ -5,11 +5,23 @@ Example 07: Post-Operation Hooks
 This example demonstrates how to use TurboBulk's post-operation hooks
 to maintain data consistency after bulk operations.
 
-Post-hooks handle tasks that Django signals normally perform:
-- Fixing denormalized fields (e.g., component site assignments)
-- Updating counter caches (e.g., interface counts)
-- Rebuilding search indexes
-- Tracing cable paths
+TurboBulk provides TWO types of post-operation processing:
+
+1. **post_hooks** (this example): SQL-level batch operations that fix
+   denormalized fields, update counter caches, rebuild search indexes,
+   and trace cable paths. These run as efficient bulk SQL queries after
+   the merge operation.
+
+2. **apply_save_hooks** (default: False): Bulk SQL fixups that replicate
+   Django model save() side-effects — location inheritance from racks,
+   custom field defaults, unit normalizations, scope cache fields, etc.
+   Uses bulk SQL for all core NetBox models (near-zero overhead). Falls
+   back to per-object save() only for plugin models with custom overrides.
+
+Both can be used together or independently:
+- For maximum data consistency: enable both
+- For maximum performance: disable both (default behavior)
+- For partial consistency: enable one or the other
 
 Run: python 07_post_hooks.py [--cleanup]
 """
@@ -111,12 +123,15 @@ def example_with_hooks(client: TurboBulkClient, site_id: int, prefix: str):
         print("  Creating 5 devices with ALL hooks enabled...")
         result = client.load(
             'dcim.device', path,
-            # All hooks enabled by default, but being explicit:
+            # post_hooks: SQL-level batch fixups for denormalized fields, search, counters
             post_hooks={
                 'fix_denormalized': True,
                 'rebuild_search_index': True,
                 'fix_counters': True,
             },
+            # apply_save_hooks: bulk SQL fixups for computed fields (default: False)
+            # Handles location inheritance, custom field defaults, unit normalizations
+            apply_save_hooks=True,  # Explicitly enable
             verbose=False
         )
 
@@ -167,7 +182,7 @@ def example_without_hooks(client: TurboBulkClient, site_id: int, prefix: str):
         path = Path(f.name)
 
     try:
-        print("  Creating 10 sites with hooks DISABLED...")
+        print("  Creating 10 sites with ALL hooks DISABLED...")
         start = time.time()
 
         result = client.load(
@@ -177,6 +192,7 @@ def example_without_hooks(client: TurboBulkClient, site_id: int, prefix: str):
                 'rebuild_search_index': False,  # Will rebuild manually after
                 'fix_counters': False,  # Skip counter updates
             },
+            apply_save_hooks=False,  # Skip Django save() side-effects
             verbose=False
         )
 
@@ -233,21 +249,25 @@ def example_selective_hooks(client: TurboBulkClient, prefix: str):
     })
     """)
 
-    print("  Scenario 4: Large multi-stage import")
-    print("  -> Disable search index during import")
-    print("  -> Rebuild once at the end")
+    print("  Scenario 4: Large multi-stage import (maximum performance)")
+    print("  -> Disable search index and save hooks during import")
+    print("  -> Keep fix_denormalized for FK consistency")
+    print("  -> Rebuild search index once at the end")
     print("""
-    # Stage 1: Import sites
+    # Stage 1: Import sites (no computed fields to worry about)
     client.load('dcim.site', 'sites.parquet',
-                post_hooks={'rebuild_search_index': False})
+                post_hooks={'rebuild_search_index': False},
+                apply_save_hooks=False)
 
-    # Stage 2: Import devices
+    # Stage 2: Import devices (keep save hooks for location inheritance)
     client.load('dcim.device', 'devices.parquet',
-                post_hooks={'rebuild_search_index': False, 'fix_denormalized': True})
+                post_hooks={'rebuild_search_index': False, 'fix_denormalized': True},
+                apply_save_hooks=True)  # Needed for location, CF defaults
 
     # Stage 3: Import interfaces
     client.load('dcim.interface', 'interfaces.parquet',
-                post_hooks={'rebuild_search_index': False, 'fix_counters': True})
+                post_hooks={'rebuild_search_index': False, 'fix_counters': True},
+                apply_save_hooks=False)
 
     # Final: Rebuild search index once
     # Run: ./manage.py reindex --lazy
