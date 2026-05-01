@@ -347,8 +347,10 @@ class TestLoadDryRun(unittest.TestCase):
 
                 # Check that dry_run was included in form data
                 call_args = mock_post.call_args
-                form_data = call_args.kwargs.get("data", {})
-                self.assertEqual(form_data.get("dry_run"), "true")
+                form_data = call_args.kwargs.get("data", [])
+                form_keys = [k for k, v in form_data]
+                form_dict = dict(form_data)
+                self.assertEqual(form_dict.get("dry_run"), "true")
         finally:
             parquet_path.unlink()
 
@@ -373,8 +375,9 @@ class TestLoadDryRun(unittest.TestCase):
 
                 # dry_run should not be in form data
                 call_args = mock_post.call_args
-                form_data = call_args.kwargs.get("data", {})
-                self.assertNotIn("dry_run", form_data)
+                form_data = call_args.kwargs.get("data", [])
+                form_keys = [k for k, v in form_data]
+                self.assertNotIn("dry_run", form_keys)
         finally:
             parquet_path.unlink()
 
@@ -436,8 +439,9 @@ class TestDeleteDryRun(unittest.TestCase):
 
                 # Check that dry_run was included in form data
                 call_args = mock_post.call_args
-                form_data = call_args.kwargs.get("data", {})
-                self.assertEqual(form_data.get("dry_run"), "true")
+                form_data = call_args.kwargs.get("data", [])
+                form_dict = dict(form_data)
+                self.assertEqual(form_dict.get("dry_run"), "true")
         finally:
             parquet_path.unlink()
 
@@ -462,8 +466,9 @@ class TestDeleteDryRun(unittest.TestCase):
 
                 # dry_run should not be in form data
                 call_args = mock_post.call_args
-                form_data = call_args.kwargs.get("data", {})
-                self.assertNotIn("dry_run", form_data)
+                form_data = call_args.kwargs.get("data", [])
+                form_keys = [k for k, v in form_data]
+                self.assertNotIn("dry_run", form_keys)
         finally:
             parquet_path.unlink()
 
@@ -698,6 +703,94 @@ class TestDownloadHandling(unittest.TestCase):
         path.unlink()
 
 
+class TestLoadListSerialization(unittest.TestCase):
+    """Tests for list field serialization in load() and delete()."""
+
+    def setUp(self):
+        self.client = TurboBulkClient("http://netbox:8080", "test-token")
+
+    def _make_parquet(self):
+        """Create a temporary parquet file for testing."""
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+
+        f = tempfile.NamedTemporaryFile(suffix=".parquet", delete=False)
+        table = pa.table({"name": ["test"]})
+        pq.write_table(table, f.name)
+        f.close()
+        return Path(f.name)
+
+    def test_load_sends_conflict_fields_as_repeated_keys(self):
+        """conflict_fields sends one form entry per field, not comma-joined."""
+        path = self._make_parquet()
+        try:
+            mock_response = MagicMock()
+            mock_response.json.return_value = {"job_id": "test-job-id"}
+            mock_response.raise_for_status = MagicMock()
+
+            with patch.object(self.client.session, "post", return_value=mock_response) as mock_post:
+                with patch.object(self.client, "_wait_for_job", return_value={"status": "success"}):
+                    self.client.load(
+                        "dcim.device", path, mode="upsert",
+                        conflict_fields=["name", "site_id"],
+                    )
+
+                form_data = mock_post.call_args.kwargs.get("data", [])
+                # Should be list of tuples, not a dict
+                self.assertIsInstance(form_data, list)
+                # Extract conflict_fields entries
+                cf_entries = [v for k, v in form_data if k == "conflict_fields"]
+                self.assertEqual(cf_entries, ["name", "site_id"])
+                # Should NOT have a comma-joined entry
+                joined = [v for k, v in form_data if k == "conflict_fields" and "," in v]
+                self.assertEqual(joined, [])
+        finally:
+            path.unlink()
+
+    def test_load_sends_conflict_constraint(self):
+        """conflict_constraint is sent as a form field."""
+        path = self._make_parquet()
+        try:
+            mock_response = MagicMock()
+            mock_response.json.return_value = {"job_id": "test-job-id"}
+            mock_response.raise_for_status = MagicMock()
+
+            with patch.object(self.client.session, "post", return_value=mock_response) as mock_post:
+                with patch.object(self.client, "_wait_for_job", return_value={"status": "success"}):
+                    self.client.load(
+                        "dcim.device", path, mode="upsert",
+                        conflict_constraint="dcim_device_unique_name_site",
+                    )
+
+                form_data = mock_post.call_args.kwargs.get("data", [])
+                cc_entries = [v for k, v in form_data if k == "conflict_constraint"]
+                self.assertEqual(cc_entries, ["dcim_device_unique_name_site"])
+        finally:
+            path.unlink()
+
+    def test_delete_sends_key_fields_as_repeated_keys(self):
+        """key_fields sends one form entry per field, not comma-joined."""
+        path = self._make_parquet()
+        try:
+            mock_response = MagicMock()
+            mock_response.json.return_value = {"job_id": "test-job-id"}
+            mock_response.raise_for_status = MagicMock()
+
+            with patch.object(self.client.session, "post", return_value=mock_response) as mock_post:
+                with patch.object(self.client, "_wait_for_job", return_value={"status": "success"}):
+                    self.client.delete(
+                        "dcim.device", path,
+                        key_fields=["name", "site_id"],
+                    )
+
+                form_data = mock_post.call_args.kwargs.get("data", [])
+                self.assertIsInstance(form_data, list)
+                kf_entries = [v for k, v in form_data if k == "key_fields"]
+                self.assertEqual(kf_entries, ["name", "site_id"])
+        finally:
+            path.unlink()
+
+
 class TestLoadApplySaveHooks(unittest.TestCase):
     """Tests for load() with apply_save_hooks parameter."""
 
@@ -727,8 +820,9 @@ class TestLoadApplySaveHooks(unittest.TestCase):
                 with patch.object(self.client, "_wait_for_job", return_value={"status": "success"}):
                     self.client.load("dcim.device", path, apply_save_hooks=True)
 
-                form_data = mock_post.call_args.kwargs.get("data", {})
-                self.assertEqual(form_data.get("apply_save_hooks"), "true")
+                form_data = mock_post.call_args.kwargs.get("data", [])
+                form_dict = dict(form_data)
+                self.assertEqual(form_dict.get("apply_save_hooks"), "true")
         finally:
             path.unlink()
 
@@ -744,8 +838,9 @@ class TestLoadApplySaveHooks(unittest.TestCase):
                 with patch.object(self.client, "_wait_for_job", return_value={"status": "success"}):
                     self.client.load("dcim.device", path, apply_save_hooks=False)
 
-                form_data = mock_post.call_args.kwargs.get("data", {})
-                self.assertEqual(form_data.get("apply_save_hooks"), "false")
+                form_data = mock_post.call_args.kwargs.get("data", [])
+                form_dict = dict(form_data)
+                self.assertEqual(form_dict.get("apply_save_hooks"), "false")
         finally:
             path.unlink()
 
@@ -761,8 +856,9 @@ class TestLoadApplySaveHooks(unittest.TestCase):
                 with patch.object(self.client, "_wait_for_job", return_value={"status": "success"}):
                     self.client.load("dcim.device", path)
 
-                form_data = mock_post.call_args.kwargs.get("data", {})
-                self.assertNotIn("apply_save_hooks", form_data)
+                form_data = mock_post.call_args.kwargs.get("data", [])
+                form_keys = [k for k, v in form_data]
+                self.assertNotIn("apply_save_hooks", form_keys)
         finally:
             path.unlink()
 
