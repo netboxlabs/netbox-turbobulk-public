@@ -282,36 +282,37 @@ class TurboBulkClient:
         if not data_path.exists():
             raise TurboBulkError(f"Data file not found: {data_path}")
 
-        # Build form data
-        data = {
-            "model": model,
-            "mode": mode,
-            "validation_mode": validation_mode,
-            "create_changelogs": str(create_changelogs).lower(),
-        }
+        # Build form data as list of tuples to support repeated keys
+        form_data = [
+            ("model", model),
+            ("mode", mode),
+            ("validation_mode", validation_mode),
+            ("create_changelogs", str(create_changelogs).lower()),
+        ]
         if conflict_fields:
-            data["conflict_fields"] = ",".join(conflict_fields)
+            for field in conflict_fields:
+                form_data.append(("conflict_fields", field))
         if conflict_constraint:
-            data["conflict_constraint"] = conflict_constraint
+            form_data.append(("conflict_constraint", conflict_constraint))
         if post_hooks:
             import json
 
-            data["post_hooks"] = json.dumps(post_hooks)
+            form_data.append(("post_hooks", json.dumps(post_hooks)))
         if dispatch_events is not None:
-            data["dispatch_events"] = str(dispatch_events).lower()
+            form_data.append(("dispatch_events", str(dispatch_events).lower()))
         if apply_save_hooks is not None:
-            data["apply_save_hooks"] = str(apply_save_hooks).lower()
+            form_data.append(("apply_save_hooks", str(apply_save_hooks).lower()))
         if branch:
-            data["branch"] = branch
+            form_data.append(("branch", branch))
         if dry_run:
-            data["dry_run"] = "true"
+            form_data.append(("dry_run", "true"))
 
         # Upload file
         with open(data_path, "rb") as f:
             files = {"file": (data_path.name, f, "application/octet-stream")}
             response = self.session.post(
                 f"{self.api_base}/load/",
-                data=data,
+                data=form_data,
                 files=files,
             )
 
@@ -376,25 +377,26 @@ class TurboBulkClient:
         if not data_path.exists():
             raise TurboBulkError(f"Data file not found: {data_path}")
 
-        data = {
-            "model": model,
-            "cascade_nullable_fks": str(cascade_nullable_fks).lower(),
-            "create_changelogs": str(create_changelogs).lower(),
-        }
+        form_data = [
+            ("model", model),
+            ("cascade_nullable_fks", str(cascade_nullable_fks).lower()),
+            ("create_changelogs", str(create_changelogs).lower()),
+        ]
         if key_fields:
-            data["key_fields"] = ",".join(key_fields)
+            for field in key_fields:
+                form_data.append(("key_fields", field))
         if dispatch_events is not None:
-            data["dispatch_events"] = str(dispatch_events).lower()
+            form_data.append(("dispatch_events", str(dispatch_events).lower()))
         if branch:
-            data["branch"] = branch
+            form_data.append(("branch", branch))
         if dry_run:
-            data["dry_run"] = "true"
+            form_data.append(("dry_run", "true"))
 
         with open(data_path, "rb") as f:
             files = {"file": (data_path.name, f, "application/octet-stream")}
             response = self.session.post(
                 f"{self.api_base}/delete/",
-                data=data,
+                data=form_data,
                 files=files,
             )
 
