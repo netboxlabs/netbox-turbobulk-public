@@ -731,7 +731,9 @@ class TestLoadListSerialization(unittest.TestCase):
             with patch.object(self.client.session, "post", return_value=mock_response) as mock_post:
                 with patch.object(self.client, "_wait_for_job", return_value={"status": "success"}):
                     self.client.load(
-                        "dcim.device", path, mode="upsert",
+                        "dcim.device",
+                        path,
+                        mode="upsert",
                         conflict_fields=["name", "site_id"],
                     )
 
@@ -758,7 +760,9 @@ class TestLoadListSerialization(unittest.TestCase):
             with patch.object(self.client.session, "post", return_value=mock_response) as mock_post:
                 with patch.object(self.client, "_wait_for_job", return_value={"status": "success"}):
                     self.client.load(
-                        "dcim.device", path, mode="upsert",
+                        "dcim.device",
+                        path,
+                        mode="upsert",
                         conflict_constraint="dcim_device_unique_name_site",
                     )
 
@@ -779,7 +783,8 @@ class TestLoadListSerialization(unittest.TestCase):
             with patch.object(self.client.session, "post", return_value=mock_response) as mock_post:
                 with patch.object(self.client, "_wait_for_job", return_value={"status": "success"}):
                     self.client.delete(
-                        "dcim.device", path,
+                        "dcim.device",
+                        path,
                         key_fields=["name", "site_id"],
                     )
 
