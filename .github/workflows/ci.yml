@@ -47,15 +47,41 @@ jobs:
 
       - name: Check formatting with black
         run: |
-          black --check src/ tests/
+          black --check src/ tests/ scripts/
 
       - name: Check import sorting with isort
         run: |
-          isort --check-only src/ tests/
+          isort --check-only src/ tests/ scripts/
 
       - name: Type check with mypy
         run: |
           mypy src/
+
+  # Standalone so an unrelated lint failure cannot skip it, and because it is
+  # stdlib-only and needs no install. 3.12: tomllib needs 3.11+, and unittest
+  # only exits non-zero on "no tests ran" from 3.12.
+  version-consistency:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Version consistency check
+        run: |
+          python scripts/check_version_consistency.py
+
+      # Runs even when the check above fails -- that is exactly when you want
+      # to know whether the checker is broken or the versions really drifted.
+      # `!cancelled()` rather than `always()`, which would also keep the runner
+      # busy after a cancellation.
+      - name: Version-check unit tests
+        if: ${{ !cancelled() }}
+        run: |
+          python -m unittest scripts.test_check_version_consistency -v
 
   build:
     runs-on: ubuntu-latest
