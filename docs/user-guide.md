@@ -128,7 +128,7 @@ The bulk API deliberately bypasses certain NetBox features for performance. Unde
 
 | Feature | REST API Behavior | TurboBulk Behavior | Impact |
 |---------|-------------------|-------------------|--------|
-| **Webhooks/Events** | Triggered per object | **Async dispatch** (default) | Events dispatched after operation |
+| **Webhooks/Events** | Triggered per object | **Async dispatch** (default) | Events dispatched after operation; skipped for branch-scoped operations (fire at merge) |
 | **Event rules** | Triggered per object | **Async dispatch** (default) | Rules triggered via event pipeline |
 | **Custom scripts** | Executed per object | Not triggered | Plugin hooks won't fire |
 | **Custom validators** | Validation executed | Database + optional Django validation | Some validation gaps for complex models |
@@ -578,6 +578,15 @@ result = client.load('dcim.device', 'devices.jsonl.gz', dispatch_events=False)
 - Initial data migrations where downstream systems don't need notifications
 - Large imports where event volume would overwhelm consumers
 - Test data loads
+
+### With Branching
+
+Branch-scoped operations skip event dispatch entirely, even when
+`dispatch_events` is enabled — the job result records this with an
+`event_dispatch_skipped` field. Events for branch changes fire when the
+branch is merged, as netbox-branching replays the branch changelog into main
+through the standard event pipeline. See the
+[Branching Guide](branching.md#events--webhooks) for details.
 
 ## Export Caching
 

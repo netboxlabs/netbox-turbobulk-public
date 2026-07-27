@@ -73,12 +73,29 @@ When you specify a `branch` parameter, TurboBulk:
 3. **Routes operations to branch** - All bulk operations target the branch in isolation
 4. **Generates ChangeDiffs** - Creates records for merge conflict detection
 
+Post-operation hooks (denormalization, counter caches, cable links, cable
+path rebuilding, search reindex) also run inside the branch and update
+branch data — main-schema rows are never touched by a branch-scoped
+operation.
+
 ### ObjectChange Records
 
 ObjectChange records are created in the branch schema, not main:
 - They're visible when viewing the branch
 - They survive the merge process
 - They provide full audit trail of what changed
+
+### Events & Webhooks
+
+Branch-scoped operations do **not** dispatch events (webhooks, event rules)
+at load time, even when `dispatch_events` is enabled. The job result records
+this with an `event_dispatch_skipped` field.
+
+Events for branch changes fire when the branch is **merged**: netbox-branching
+replays the branch's changelog into main, and that replay goes through the
+standard event pipeline. In other words, events represent changes to main —
+loading into a branch stages changes; merging makes them real and notifies
+event consumers.
 
 ### Change Tracking
 
