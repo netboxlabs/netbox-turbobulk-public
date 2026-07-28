@@ -431,6 +431,7 @@ class TurboBulkClient:
         force_refresh: bool = False,
         check_cache_only: bool = False,
         client_cache_key: Optional[str] = None,
+        branch: Optional[str] = None,
         wait: bool = True,
         poll_interval: float = 1.0,
         timeout: int = 3600,
@@ -453,6 +454,9 @@ class TurboBulkClient:
             force_refresh: Bypass cache and generate fresh export
             check_cache_only: Only check cache status, don't create job on miss
             client_cache_key: Client's cached version key (for 304 response)
+            branch: Branch name to export from (requires netbox-branching).
+                Rows, tags, and custom fields are read from the branch schema;
+                branch exports bypass the export cache.
             wait: If True, poll until job completes
             poll_interval: Seconds between status polls
             timeout: Max seconds to wait for completion
@@ -483,6 +487,8 @@ class TurboBulkClient:
             data["check_cache_only"] = True
         if client_cache_key:
             data["client_cache_key"] = client_cache_key
+        if branch:
+            data["branch"] = branch
 
         response = self.session.post(
             f"{self.api_base}/export/",
