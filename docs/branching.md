@@ -156,6 +156,30 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
 
 Deletes objects from the branch. ChangeDiffs are created with `action=delete` and include `original_data`.
 
+### Bulk Export from Branch
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "ipam.ipaddress", "include_tags": true, "branch": "my-branch"}' \
+  "https://your-instance-name.cloud.netboxapp.com/api/plugins/turbobulk/export/"
+```
+
+Or with the Python client:
+
+```python
+result = client.export('ipam.ipaddress', branch='my-branch')
+```
+
+Exports rows, tags, and custom fields from the **branch schema** — objects
+created and tags applied inside the branch are included, exactly as the
+branch sees them. The `X-NetBox-Branch` header and `?_branch=` query
+parameter (netbox-branching's conventions) are also honored when the
+`branch` body parameter is not set.
+
+Branch exports bypass the export cache: cache entries reflect main-schema
+state, so every branch export generates a fresh file.
+
 ## Workflow Examples
 
 ### Example 1: New Datacenter Provisioning
