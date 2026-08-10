@@ -5,6 +5,12 @@ All notable changes to the TurboBulk Client will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-08-06
+
+Version parity with TurboBulk server v0.2.1, which was a release-pipeline fix
+(the v0.2.0 build never reached CodeArtifact/S3; v0.2.1 is the first fully
+published build). No functional changes to the client or plugin since 0.2.0.
+
 ## [0.2.0] - 2026-08-06
 
 Tandem release aligning the client version with TurboBulk server v0.2.0. No client
