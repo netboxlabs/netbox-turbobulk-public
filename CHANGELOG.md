@@ -5,6 +5,33 @@ All notable changes to the TurboBulk Client will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-08-06
+
+Tandem release aligning the client version with TurboBulk server v0.2.0. No client
+code changes — the client already surfaces these server capabilities (schema
+responses are returned as-is, and any model can be passed to `export()`).
+
+### Added
+
+- **Server: port-mapping export**. The private `dcim.portmapping` (and
+  `dcim.porttemplatemapping`) tables are now exportable through TurboBulk. NetBox
+  moved the front↔rear pass-through relationship into these tables, so this is the
+  only way to bulk-read that wiring. They appear in the model list flagged
+  `export_only` and are authorized by the public ports' view permissions
+  (`dcim.view_frontport` + `dcim.view_rearport`). Load/delete remain unsupported.
+- **Server: richer model schema**. `get_model_schema()` now returns, per field,
+  the JSON type the JSONL export actually writes (`jsonl_type`, `array_item_type`,
+  `jsonl_nullable`) plus `choice_labels`; and per model, `export_only_columns`
+  (currently `_tags`) and a `jsonl_format_version`. Consumers can now describe an
+  export row exactly instead of inferring wire types from `arrow_type`.
+
+### Changed
+
+- **Server: private/internal models filtered from discovery**. NetBox
+  `_netbox_private` and non-public models are no longer listed by the models
+  endpoint, and a direct request for one returns a clear error instead of a
+  confusing ungrantable-permission denial.
+
 ## [0.1.3] - 2026-03-25
 
 ### Changed
