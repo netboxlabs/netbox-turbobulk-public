@@ -5,6 +5,26 @@ All notable changes to the TurboBulk Client will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-08-23
+
+Version parity with TurboBulk server v0.3.0. No client code changes — schema
+responses pass through as-is and any model can be exported.
+
+### Added
+
+- **Server: NetBox 4.7 compatibility.** TurboBulk now supports NetBox 4.7 (in
+  addition to 4.5/4.6): the MPTT→ltree migration for nested/tree models, new
+  cooling/thermal models (`DiameterMixin` `_abs_diameter`, `MaxFlowMixin`
+  `_abs_max_flow`), and Django 6.1 partial expression indexes (so
+  case-insensitive natural-key upserts of Device/VM keep working).
+
+### Fixed
+
+- **Server: upsert with an empty `conflict_fields` list** no longer errors with
+  `ON CONFLICT ()` — it defaults to the primary key like an omitted value.
+- **Server: `apply_save_hooks` clear semantics** — clearing a value+unit pair
+  together now also clears the derived `_abs_*` column, matching NetBox `save()`.
+
 ## [0.2.1] - 2026-08-06
 
 Version parity with TurboBulk server v0.2.1, which was a release-pipeline fix
