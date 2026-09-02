@@ -5,6 +5,24 @@ All notable changes to the TurboBulk Client will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-09-02
+
+Version parity with TurboBulk server v0.3.1. No client code changes.
+
+### Security
+
+- **Server: export permission hardening.** Exports are now filtered to the
+  rows the caller's NetBox ObjectPermissions actually permit (a model-level
+  permission no longer returns every row), and credential columns (e.g. token
+  `key`/`plaintext`) are never emitted. Cached exports are bound to their
+  owning caller so a cached file cannot be served to a differently-scoped one.
+
+### Fixed
+
+- **Server: NetBox Enterprise auth.** TurboBulk's API now accepts the NetBox
+  Identity Token on the `JWT` scheme, so requests from NetBox Enterprise
+  authenticate instead of being rejected as anonymous.
+
 ## [0.3.0] - 2026-08-23
 
 Version parity with TurboBulk server v0.3.0. No client code changes — schema
