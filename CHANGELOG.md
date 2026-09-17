@@ -5,6 +5,28 @@ All notable changes to the TurboBulk Client will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-09-17
+
+Version parity with TurboBulk server v0.4.0. No client code changes.
+
+### Added
+
+- **Server: opt-in resource guardrails.** The server can now bound a single bulk
+  operation's impact on the shared database (noisy-neighbor protection on
+  multi-tenant deployments): per-operation statement/lock timeouts, a
+  max-rows-per-operation limit, a per-database concurrency cap, and an optional
+  empty-delete guard. All are **off by default** and configured server-side. When
+  a limit is exceeded, the operation fails with a clear `guardrail` error, which
+  the client surfaces as `JobFailedError`.
+- **Server: per-operation timing.** Load and delete job results now include
+  `duration_seconds`, and lifecycle logs carry structured job/operation context.
+
+### Changed
+
+- **Server: dependency and CI maintenance** across server v0.3.2–v0.3.6 (Renovate
+  adoption; pandas 3, pyarrow 25, pytest 9, ruff 0.16.6, GitHub Actions v7). No
+  API, request/response schema, or export-format changes affecting the client.
+
 ## [0.3.1] - 2026-09-02
 
 Version parity with TurboBulk server v0.3.1. No client code changes.
