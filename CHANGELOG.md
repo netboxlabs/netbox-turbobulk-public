@@ -5,6 +5,16 @@ All notable changes to the TurboBulk Client will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-09-23
+
+Version parity with TurboBulk server v0.4.1. No client code changes.
+
+Server v0.4.1 is a metadata/docs patch: the plugin now declares its catalog
+metadata in the `schema_version: 1` format (so it surfaces correctly in the
+plugins catalog), caps its supported NetBox range at `4.7.99` (was `4.99`) to
+match what is tested, and corrects stale documentation. No API, schema, or
+export-format changes affecting the client.
+
 ## [0.4.0] - 2026-09-17
 
 Version parity with TurboBulk server v0.4.0. No client code changes.
