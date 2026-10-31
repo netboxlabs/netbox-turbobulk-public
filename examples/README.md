@@ -247,7 +247,7 @@ Shows:
 - Cache HIT vs MISS behavior
 - `force_refresh=true` to bypass cache
 - `check_cache_only=true` to verify cache status
-- `client_cache_key` for 304 Not Modified responses
+- `client_cache_key` + `client_cache_version` for 304 Not Modified responses
 - Client-side caching workflow for sync jobs
 
 ### 10 - Validation Best Practices

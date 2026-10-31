@@ -431,6 +431,7 @@ class TurboBulkClient:
         force_refresh: bool = False,
         check_cache_only: bool = False,
         client_cache_key: Optional[str] = None,
+        client_cache_version: Optional[str] = None,
         branch: Optional[str] = None,
         wait: bool = True,
         poll_interval: float = 1.0,
@@ -443,6 +444,16 @@ class TurboBulkClient:
         Supports caching: if data hasn't changed since last export, returns
         cached file immediately (HTTP 200) instead of creating a new job.
 
+        Client-side caching (HTTP 304): every result that came from a cached
+        build carries ``cache_key`` and ``cache_version``. Pass both back as
+        ``client_cache_key`` and ``client_cache_version`` and the server
+        answers 304 Not Modified while that build is still current, so the
+        file you already hold is reused. ``cache_key`` names the request,
+        not the data, so on servers that support ``cache_version`` a key
+        sent without its version never earns a 304 (you get the cached file
+        again instead). Older servers ignore ``client_cache_version`` and
+        do not return ``cache_version``; the client works unchanged there.
+
         Args:
             model: Model identifier (e.g., 'dcim.device')
             filters: Dict of filter parameters (e.g., {'site_id': 1})
@@ -453,7 +464,11 @@ class TurboBulkClient:
             output_path: Where to save file (default: temp)
             force_refresh: Bypass cache and generate fresh export
             check_cache_only: Only check cache status, don't create job on miss
-            client_cache_key: Client's cached version key (for 304 response)
+            client_cache_key: ``cache_key`` of the copy you already hold
+                (for a 304 response). Send it together with
+                ``client_cache_version``.
+            client_cache_version: ``cache_version`` of the copy you already
+                hold, from an earlier result. Only sent when set.
             branch: Branch name to export from (requires netbox-branching).
                 Rows, tags, and custom fields are read from the branch schema;
                 branch exports bypass the export cache.
@@ -464,10 +479,17 @@ class TurboBulkClient:
 
         Returns:
             Dict with export result:
-            - For cache hit: {'cached': True, 'cache_key': '...', 'path': Path, ...}
-            - For cache miss with job: {'cached': False, 'job_id': '...', 'path': Path, ...}
+            - For cache hit: {'cached': True, 'cache_key': '...',
+              'cache_version': '...', 'path': Path, ...}
+            - For cache miss with job: {'cached': False, 'job_id': '...',
+              'path': Path, 'cache_key': '...', 'cache_version': '...', ...}
+              (cache fields present only when the server stored the build)
             - For check_cache_only: {'cached': bool, 'data_changed': bool, ...}
-            - For 304 Not Modified: {'status_code': 304, 'cached': True, ...}
+            - For 304 Not Modified: {'status_code': 304, 'cached': True,
+              'cache_key': '...', 'cache_version': '...'} echoing the values
+              you sent, so the result can be stored like any other
+            ``cache_version`` is absent when talking to servers older than
+            the release that introduced it.
         """
         import tempfile
 
@@ -487,6 +509,10 @@ class TurboBulkClient:
             data["check_cache_only"] = True
         if client_cache_key:
             data["client_cache_key"] = client_cache_key
+        # Only sent when set. Servers without cache_version support ignore
+        # unknown request fields, so sending it is safe either way.
+        if client_cache_version:
+            data["client_cache_version"] = client_cache_version
         if branch:
             data["branch"] = branch
 
@@ -500,6 +526,12 @@ class TurboBulkClient:
             result: Dict[str, Any] = response.json() if response.content else {}
             result["status_code"] = 304
             result["cached"] = True
+            # Echo what the caller holds so a 304 result can be stored and
+            # replayed exactly like a 200 one.
+            if client_cache_key:
+                result.setdefault("cache_key", client_cache_key)
+            if client_cache_version:
+                result.setdefault("cache_version", client_cache_version)
             if verbose:
                 print(f"Cache current: client file is up to date")
             return result
@@ -571,8 +603,15 @@ class TurboBulkClient:
         output_path = self._download_export_file(download_url, output_path, format, verbose)
         job_result["path"] = output_path
 
-        # Add cache info to result
+        # Add cache info to result. Servers with cache_version support report
+        # the stored build's cache_key/cache_version in the job's data (only
+        # when the build was cached, see cache_stored); lift them to the top
+        # level so callers read them the same way as from a cache hit.
         job_result["cached"] = False
+        job_data = job_result.get("data") or {}
+        for field in ("cache_key", "cache_version", "cache_stored"):
+            if field in job_data and field not in job_result:
+                job_result[field] = job_data[field]
         return job_result
 
     def check_export_cache(
@@ -584,6 +623,7 @@ class TurboBulkClient:
         include_tags: bool = True,
         format: str = "jsonl",
         client_cache_key: Optional[str] = None,
+        client_cache_version: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Check if a cached export exists for the given parameters.
@@ -597,13 +637,16 @@ class TurboBulkClient:
             include_custom_fields: Include custom fields
             include_tags: Include tags
             format: Export format - 'jsonl' (default) or 'parquet'
-            client_cache_key: Optional client cache key for 304 check
+            client_cache_key: ``cache_key`` of the copy you hold, for a 304 check
+            client_cache_version: ``cache_version`` of the copy you hold. On
+                servers that support it, a 304 needs both values.
 
         Returns:
             Dict with cache status:
-            - {'cached': True, 'cache_key': '...', 'download_url': '...', ...}
+            - {'cached': True, 'cache_key': '...', 'cache_version': '...',
+              'download_url': '...', ...}
             - {'cached': False, 'data_changed': True, ...}
-            - {'status_code': 304, ...} if client_cache_key matches
+            - {'status_code': 304, ...} if the copy you hold is current
         """
         return self.export(
             model=model,
@@ -614,6 +657,7 @@ class TurboBulkClient:
             format=format,
             check_cache_only=True,
             client_cache_key=client_cache_key,
+            client_cache_version=client_cache_version,
             wait=False,
             verbose=False,
         )

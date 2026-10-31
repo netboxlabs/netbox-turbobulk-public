@@ -870,3 +870,130 @@ class TestLoadApplySaveHooks(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestExportCacheVersion(unittest.TestCase):
+    """client_cache_key + client_cache_version for HTTP 304 (server cache_version support)."""
+
+    def setUp(self):
+        self.client = TurboBulkClient("http://netbox:8080", "nbt_key.token123")
+
+    def _response(self, status_code, body=None):
+        import requests
+
+        resp = MagicMock(spec=requests.Response)
+        resp.status_code = status_code
+        resp.content = json.dumps(body).encode() if body is not None else b""
+        resp.json = MagicMock(return_value=body if body is not None else {})
+        return resp
+
+    def _sent_body(self, post):
+        return post.call_args.kwargs["json"]
+
+    def test_sends_version_when_given(self):
+        with patch.object(self.client.session, "post", return_value=self._response(304)) as post:
+            result = self.client.check_export_cache(
+                "dcim.device", client_cache_key="k" * 64, client_cache_version="123"
+            )
+
+        body = self._sent_body(post)
+        self.assertEqual(body["client_cache_key"], "k" * 64)
+        self.assertEqual(body["client_cache_version"], "123")
+        self.assertEqual(result["status_code"], 304)
+        self.assertTrue(result["cached"])
+        # A 304 echoes what the caller holds so it can be stored like a 200.
+        self.assertEqual(result["cache_key"], "k" * 64)
+        self.assertEqual(result["cache_version"], "123")
+
+    def test_omits_version_when_not_given(self):
+        """Old call sites send exactly what they sent before (older servers unaffected)."""
+        with patch.object(self.client.session, "post", return_value=self._response(304)) as post:
+            result = self.client.check_export_cache("dcim.device", client_cache_key="k" * 64)
+
+        self.assertNotIn("client_cache_version", self._sent_body(post))
+        self.assertNotIn("cache_version", result)
+
+    def test_key_only_against_new_server_gets_cached_200(self):
+        """A newer server answers a key-only request with the cached file, not an error."""
+        body = {
+            "status": "completed",
+            "cached": True,
+            "cache_key": "k" * 64,
+            "cache_version": "456",
+            "download_url": "http://netbox:8080/api/plugins/turbobulk/cache/kkk/download/",
+            "row_count": 3,
+        }
+        with patch.object(self.client.session, "post", return_value=self._response(200, body)):
+            result = self.client.check_export_cache("dcim.device", client_cache_key="k" * 64)
+
+        self.assertEqual(result["status_code"], 200)
+        self.assertEqual(result["cache_version"], "456")
+
+    def test_cache_hit_returns_version(self):
+        body = {
+            "status": "completed",
+            "cached": True,
+            "cache_key": "k" * 64,
+            "cache_version": "789",
+            "download_url": "http://netbox:8080/api/plugins/turbobulk/cache/kkk/download/",
+        }
+        with patch.object(self.client.session, "post", return_value=self._response(200, body)):
+            with patch.object(
+                self.client, "_download_export_file", return_value=Path("/tmp/x.jsonl.gz")
+            ):
+                result = self.client.export("dcim.device", verbose=False)
+
+        self.assertEqual(result["cache_key"], "k" * 64)
+        self.assertEqual(result["cache_version"], "789")
+        self.assertEqual(result["path"], Path("/tmp/x.jsonl.gz"))
+
+    def test_cache_hit_from_older_server_has_no_version(self):
+        """Older servers don't return cache_version; the client tolerates its absence."""
+        body = {
+            "status": "completed",
+            "cached": True,
+            "cache_key": "k" * 64,
+            "download_url": "http://netbox:8080/api/plugins/turbobulk/cache/kkk/download/",
+        }
+        with patch.object(self.client.session, "post", return_value=self._response(200, body)):
+            with patch.object(
+                self.client, "_download_export_file", return_value=Path("/tmp/x.jsonl.gz")
+            ):
+                result = self.client.export("dcim.device", verbose=False)
+
+        self.assertEqual(result["cache_key"], "k" * 64)
+        self.assertNotIn("cache_version", result)
+
+    def _job_export(self, job_data):
+        submitted = self._response(202, {"job_id": "j1", "status": "pending", "cached": False})
+        job_result = {"status": "completed", "data": job_data}
+        with patch.object(self.client.session, "post", return_value=submitted):
+            with patch.object(self.client, "_wait_for_job", return_value=job_result):
+                with patch.object(
+                    self.client, "_download_export_file", return_value=Path("/tmp/x.jsonl.gz")
+                ):
+                    return self.client.export("dcim.device", verbose=False)
+
+    def test_job_export_lifts_cache_fields_from_job_data(self):
+        result = self._job_export(
+            {"rows_exported": 3, "cache_stored": True, "cache_key": "k" * 64, "cache_version": "1"}
+        )
+
+        self.assertFalse(result["cached"])
+        self.assertTrue(result["cache_stored"])
+        self.assertEqual(result["cache_key"], "k" * 64)
+        self.assertEqual(result["cache_version"], "1")
+
+    def test_job_export_not_cached_reports_no_version(self):
+        result = self._job_export({"rows_exported": 3, "cache_stored": False})
+
+        self.assertIs(result["cache_stored"], False)
+        self.assertNotIn("cache_key", result)
+        self.assertNotIn("cache_version", result)
+
+    def test_job_export_from_older_server_has_no_cache_fields(self):
+        result = self._job_export({"rows_exported": 3, "file_path": "exports/x.jsonl.gz"})
+
+        self.assertFalse(result["cached"])
+        self.assertNotIn("cache_stored", result)
+        self.assertNotIn("cache_version", result)

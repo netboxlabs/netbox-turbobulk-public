@@ -10,7 +10,8 @@ Key concepts:
 2. Cache MISS: When data changed or first request, new job created (HTTP 202)
 3. Force refresh: Bypass cache to get fresh data
 4. Check-only mode: Verify cache status without creating jobs
-5. Client-side caching: Avoid re-downloading unchanged files
+5. Client-side caching: Avoid re-downloading unchanged files by sending back
+   the cache_key AND cache_version of the copy you hold (HTTP 304)
 
 Use cases:
 - Scheduled sync jobs that need to export data regularly
@@ -64,12 +65,16 @@ def main():
         print(f"Duration: {duration1:.2f}s")
         if result1.get('cache_key'):
             print(f"Cache key: {result1['cache_key'][:32]}...")
+        if result1.get('cache_version'):
+            print(f"Cache version: {result1['cache_version']}")
         if result1.get('row_count'):
             print(f"Rows: {result1['row_count']}")
 
-        # Store the cache key for later comparison
+        # Store the cache key AND version of the copy we now hold. The key
+        # names the request (it never changes between rebuilds); the version
+        # names this particular build. A 304 needs both.
         cache_key = result1.get('cache_key')
-        cache_created_at = result1.get('cache_created_at')
+        cache_version = result1.get('cache_version')
 
         # ============================================================
         # Step 2: Second export (cache hit - instant response)
@@ -87,6 +92,9 @@ def main():
 
         if result2.get('cached'):
             print(f"Speed improvement: {duration1 / max(duration2, 0.001):.1f}x faster!")
+            # The cache hit is the copy we hold now: keep its key and version.
+            cache_key = result2.get('cache_key', cache_key)
+            cache_version = result2.get('cache_version', cache_version)
         else:
             print("Note: Cache miss may indicate data changed between requests")
 
@@ -103,20 +111,25 @@ def main():
             print("Data has changed since last cache")
 
         # ============================================================
-        # Step 4: Use client_cache_key for 304 response
+        # Step 4: Send back client_cache_key + client_cache_version for 304
         # ============================================================
         if cache_key:
             print("\n" + "="*60)
             print("STEP 4: Client Cache Validation (304 Response)")
             print("="*60)
 
-            result304 = check_client_cache(client, args.model, cache_key)
+            if not cache_version:
+                # Servers older than cache_version support don't return it.
+                # They still answer 304 on the key alone.
+                print("Server did not return a cache_version (older server); sending key only")
+
+            result304 = check_client_cache(client, args.model, cache_key, cache_version)
             if result304.get('status_code') == 304:
                 print("Server returned 304 Not Modified - client cache is current!")
                 print("No need to re-download the file.")
             elif result304.get('cached'):
-                print("Cache valid but client has different version")
-                print(f"New cache key: {result304.get('cache_key', 'N/A')[:32]}...")
+                print("Cache valid but our copy is not the current build - re-download")
+                print(f"Current cache version: {result304.get('cache_version', 'N/A')}")
             else:
                 print("Cache invalid - would need to create new job")
 
@@ -184,10 +197,15 @@ def export_with_cache_info(client, model):
             status = status_response.json()
 
             if status.get('status') == 'completed':
-                result['row_count'] = status.get('data', {}).get('rows_exported', 0)
-                result['file_path'] = status.get('data', {}).get('file_path')
-                # Note: In a real implementation, the cache_key would be in the response
-                # after the job completes. Here we're simplifying.
+                job_data = status.get('data') or {}
+                result['row_count'] = job_data.get('rows_exported', 0)
+                result['file_path'] = job_data.get('file_path')
+                # When the server cached this build (cache_stored is true), the
+                # job's data names it: keep cache_key + cache_version so a
+                # later request can earn a 304. Older servers omit these.
+                if job_data.get('cache_stored'):
+                    result['cache_key'] = job_data.get('cache_key')
+                    result['cache_version'] = job_data.get('cache_version')
                 return result
             elif status.get('status') == 'errored':
                 raise TurboBulkError(f"Job failed: {status.get('error')}")
@@ -213,17 +231,25 @@ def check_cache_status(client, model):
     return result
 
 
-def check_client_cache(client, model, client_cache_key):
+def check_client_cache(client, model, client_cache_key, client_cache_version=None):
     """
-    Check if client's cached version is still current.
+    Check if client's cached copy is still current.
 
-    If the server returns 304, the client's local file is still valid.
+    Send back both the cache_key and the cache_version of the copy you hold.
+    If the server returns 304, the client's local file is still valid. A key
+    without its version gets the cached file again (200), never a 304, on
+    servers that support cache_version. Older servers ignore the version.
+
+    The same thing through the client library:
+        client.check_export_cache(model, client_cache_key=..., client_cache_version=...)
     """
     url = f"{client.base_url}/api/plugins/turbobulk/export/"
     data = {
         'model': model,
         'client_cache_key': client_cache_key,
     }
+    if client_cache_version:
+        data['client_cache_version'] = client_cache_version
 
     response = client.session.post(url, json=data)
     result = response.json() if response.content else {}

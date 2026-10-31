@@ -296,7 +296,8 @@ Submits a bulk export job. Supports caching: if an identical export was recently
 | `format` | string | No | Export format: `jsonl` (default) or `parquet` |
 | `force_refresh` | boolean | No | Bypass cache, generate fresh export (default: false) |
 | `check_cache_only` | boolean | No | Only check cache status, don't create job on miss (default: false) |
-| `client_cache_key` | string | No | Client's cached version key for 304 response |
+| `client_cache_key` | string | No | `cache_key` of the copy the client already holds. Send with `client_cache_version` to get a 304 while that copy is current |
+| `client_cache_version` | string | No | `cache_version` of the copy the client already holds, from a cached 200 response or a completed export job's `data`. Servers without `cache_version` support ignore it |
 
 **Example Request:**
 ```bash
@@ -331,6 +332,7 @@ HTTP 200 OK
   "status": "completed",
   "cached": true,
   "cache_key": "abc123def456...",
+  "cache_version": "1737712800000000",
   "cache_created_at": "2025-01-24T10:00:00Z",
   "download_url": "/api/plugins/turbobulk/cache/abc123def456.../download/",
   "file_size_bytes": 524288,
@@ -341,13 +343,21 @@ HTTP 200 OK
 
 **Response (Client Cache Current - 304):**
 
-When `client_cache_key` matches the current cache:
+When `client_cache_key` **and** `client_cache_version` both match the current, still-valid cache entry:
 ```json
 HTTP 304 Not Modified
 {
   "message": "Client cache is current"
 }
 ```
+
+**Client caching and `cache_version`:**
+
+`cache_key` names the export *request* (a hash of model, filters, fields, options, format and the caller's authorization scope), so it stays the same every time the cache entry is rebuilt and cannot tell whether a client's copy is current. Each build of the entry also has an opaque `cache_version`. It is returned in the cached 200 response and, for an export that ran as a job, in the completed job's `data` together with `cache_key` and `cache_stored: true` (`cache_stored` is `false`, with no key or version, when the result could not be cached).
+
+To skip a download, store both values with the file and send them back as `client_cache_key` and `client_cache_version`. The server returns 304 only when both match the current build. A request with `client_cache_key` but no `client_cache_version` gets the normal cached 200 (a re-download), never a 304, so a copy fetched before someone else rebuilt the entry can never be reported as current.
+
+Compatibility: servers that predate `cache_version` do not return it and ignore `client_cache_version`; on those, `client_cache_key` alone still produces a 304 as before. The Python client sends `client_cache_version` only when it has one, so the same code works against both.
 
 **Response (Check Cache Only - Miss):**
 
