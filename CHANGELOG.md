@@ -5,6 +5,28 @@ All notable changes to the TurboBulk Client will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Export cache versions for HTTP 304.** `export()` and `check_export_cache()`
+  take a new optional `client_cache_version` argument, sent as
+  `client_cache_version` only when set. Export results now surface the server's
+  `cache_version` next to `cache_key`: from a cached 200, from a completed export
+  job's `data` (lifted to the top level along with `cache_stored`), and echoed
+  back on a 304. Store both values with the file and pass both back to skip a
+  re-download. Matches the server change that returns 304 only when both the key
+  and the version of the current build match.
+
+### Compatibility
+
+- Against servers with `cache_version` support, a request that sends only
+  `client_cache_key` now gets the cached file again (200) instead of a 304.
+  Nothing errors; pass `client_cache_version` too to get 304s back.
+- Against older servers, nothing changes: they ignore `client_cache_version`
+  and do not return `cache_version`, and `client_cache_key` alone still gets a
+  304.
+
 ## [0.4.1] - 2026-09-23
 
 Version parity with TurboBulk server v0.4.1. No client code changes.
