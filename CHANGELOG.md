@@ -5,6 +5,48 @@ All notable changes to the TurboBulk Client will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.17] - 2026-11-12
+
+Version parity with TurboBulk server v0.4.16 and v0.4.17. No client code
+changes; documentation only (#24). The server releases are the Nov 2–9 bug
+batch; the items below are the ones a client user can observe.
+
+### Changed (documentation)
+
+- `rebuild_search_index` now re-caches only the objects an operation touched
+  instead of rebuilding the model's whole search index (server #121), so the
+  advice to disable it for large imports is withdrawn. Hook cost no longer grows
+  with table size; default loads are several times faster.
+
+### Server behaviour relevant to client users
+
+- **Authorization (fail closed).** Read-only API tokens (`write_enabled=False`)
+  get 403 on `load`/`delete` (export still works). Bulk load/upsert/delete now
+  honour ObjectPermission *constraints*: an operation touching any row outside
+  the caller's constraints fails as a whole and is rolled back. Upsert requires
+  both `add` and `change`. Permissions are re-checked when the job runs.
+- **Protected models refused as write targets.** `users.*`, `core.*`, `extras.*`
+  (except `extras.tag`), netbox-branching and TurboBulk's own tables return
+  400 with `error_type: "model_write_denied"` on load/delete; export is
+  unaffected. `GET /models/` and `GET /models/<app.model>/` report
+  `write_denied`.
+- **Multipart requests.** `filters`, `fields`, `conflict_fields` and
+  `key_fields` sent as a JSON-string form field (how this client sends them)
+  are parsed; a field sent both as a JSON string and as dotted/repeated keys, a
+  repeated `filters` field, or a non-array column list is rejected with 400
+  instead of being silently dropped or misread.
+- **Data written by bulk operations.** `created`/`last_updated` are stamped
+  (client-supplied values win; upserts bump `last_updated`). Tags attach on
+  insert and natural-key upsert for every model; a `_tags` value of `null`
+  leaves an object's tags alone, `[]` clears them. `_path` on port models is
+  server-managed and ignored if present in a payload. Changelog `object_repr`
+  matches `str(obj)` for name-less models (Prefix, IPAddress, IPRange, Cable,
+  …), and changelog/ChangeDiff data is written in NetBox's `serialize_object()`
+  shape, so branch loads merge and conflict detection works.
+- **Job result.** `post_hooks.rebuild_search_index` reports `reindexed`,
+  `cached_values` and `removed_values`; `success`/`message` are unchanged and
+  the command `output` field is gone.
+
 ## [0.4.10] - 2026-10-31
 
 Version parity with TurboBulk server v0.4.10 (netbox-turbobulk#87).

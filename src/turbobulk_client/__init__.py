@@ -13,7 +13,7 @@ from .exceptions import (
     ValidationError,
 )
 
-__version__ = "0.4.10"
+__version__ = "0.4.17"
 
 __all__ = [
     "TurboBulkClient",
