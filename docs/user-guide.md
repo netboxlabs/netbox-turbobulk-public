@@ -426,7 +426,7 @@ result = client.load(
 | Hook | Disable When |
 |------|-------------|
 | `fix_denormalized` | **Never** - disabling causes data inconsistency |
-| `rebuild_search_index` | Large imports (>100K rows) - rebuild manually after all imports complete |
+| `rebuild_search_index` | **Rarely** - it only re-caches the objects the load touched (cost scales with the load, not the table). Disable only if you plan a full `manage.py reindex` afterwards anyway |
 | `rebuild_cable_paths` | Non-cable operations (devices, sites, etc.) |
 | `fix_counters` | **Rarely** - only if doing multi-stage imports where counts will be wrong temporarily |
 

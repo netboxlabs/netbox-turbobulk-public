@@ -494,7 +494,7 @@ Post hooks can be configured per-request:
 | Hook | Default | Description |
 |------|---------|-------------|
 | `fix_denormalized` | true | Fix denormalized site/location fields |
-| `rebuild_search_index` | true | Trigger NetBox search reindex |
+| `rebuild_search_index` | true | Update NetBox's search index for the objects the operation touched |
 | `fix_counters` | true | Update counter cache fields |
 
 ## Error Responses
